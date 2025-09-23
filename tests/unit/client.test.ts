@@ -1,0 +1,441 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { McpdClient } from '../../src/client';
+import {
+  ConnectionError,
+  AuthenticationError,
+  ToolExecutionError,
+} from '../../src/errors';
+import { HealthStatusHelpers } from '../../src/types';
+
+describe('McpdClient', () => {
+  let client: McpdClient;
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+    client = new McpdClient({
+      apiEndpoint: 'http://localhost:8090',
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('constructor', () => {
+    it('should initialize with basic configuration', () => {
+      const basicClient = new McpdClient({
+        apiEndpoint: 'http://localhost:8090',
+      });
+      expect(basicClient).toBeDefined();
+      expect(basicClient.call).toBeDefined();
+    });
+
+    it('should strip trailing slash from endpoint', () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ servers: [] }),
+      });
+
+      const clientWithSlash = new McpdClient({
+        apiEndpoint: 'http://localhost:8090/',
+      });
+
+      clientWithSlash.getServers();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/servers',
+        expect.any(Object)
+      );
+    });
+
+    it('should initialize with API key', () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ servers: [] }),
+      });
+
+      const clientWithAuth = new McpdClient({
+        apiEndpoint: 'http://localhost:8090',
+        apiKey: 'test-key',
+      });
+
+      clientWithAuth.getServers();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/servers',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-key',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('servers()', () => {
+    it('should return list of servers', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ servers: ['time', 'fetch', 'git'] }),
+      });
+
+      const servers = await client.getServers();
+
+      expect(servers).toEqual(['time', 'fetch', 'git']);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/servers',
+        expect.any(Object)
+      );
+    });
+
+    it('should handle empty server list', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ servers: [] }),
+      });
+
+      const servers = await client.getServers();
+
+      expect(servers).toEqual([]);
+    });
+
+    it('should throw ConnectionError when cannot connect', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      await expect(client.getServers()).rejects.toThrow(ConnectionError);
+    });
+
+    it('should throw AuthenticationError on 401', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+
+      await expect(client.getServers()).rejects.toThrow(AuthenticationError);
+    });
+  });
+
+  describe('tools()', () => {
+    it('should return tools for all servers', async () => {
+      const mockTools = {
+        time: [{ name: 'get_current_time', description: 'Get current time' }],
+        fetch: [{ name: 'fetch_url', description: 'Fetch URL content' }],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTools,
+      });
+
+      const tools = await client.getTools();
+
+      expect(tools).toEqual(mockTools);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/tools',
+        expect.any(Object)
+      );
+    });
+
+    it('should return tools for specific server', async () => {
+      const timeTools = [
+        { name: 'get_current_time', description: 'Get current time' },
+      ];
+
+      // First call for health check
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      });
+
+      // Second call for tools
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: timeTools }),
+      });
+
+      const tools = await client.getTools('time');
+
+      expect(tools).toEqual(timeTools);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/tools/time',
+        expect.any(Object)
+      );
+    });
+
+    it('should throw ServerNotFoundError for non-existent server', async () => {
+      // Health check returns not found
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'Server not found',
+      });
+
+      await expect(client.getTools('nonexistent')).rejects.toThrow(Error);
+    });
+  });
+
+  describe('serverHealth()', () => {
+    it('should return health for all servers', async () => {
+      const mockHealth = {
+        time: { status: 'ok' },
+        fetch: { status: 'ok' },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockHealth,
+      });
+
+      const health = await client.getServerHealth();
+
+      expect(health).toEqual(mockHealth);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/health',
+        expect.any(Object)
+      );
+    });
+
+    it('should return health for specific server', async () => {
+      const serverHealth = { status: 'ok' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => serverHealth,
+      });
+
+      const health = await client.getServerHealth('time');
+
+      expect(health).toEqual(serverHealth);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/health/time',
+        expect.any(Object)
+      );
+    });
+
+    it('should cache health results', async () => {
+      const serverHealth = { status: 'ok' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => serverHealth,
+      });
+
+      // First call
+      await client.getServerHealth('time');
+      // Second call (should use cache)
+      await client.getServerHealth('time');
+
+      // Should only call fetch once due to caching
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('isServerHealthy()', () => {
+    it('should return true for healthy server', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      });
+
+      const isHealthy = await client.isServerHealthy('time');
+
+      expect(isHealthy).toBe(true);
+    });
+
+    it('should return false for unhealthy server', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'unreachable' }),
+      });
+
+      const isHealthy = await client.isServerHealthy('time');
+
+      expect(isHealthy).toBe(false);
+    });
+  });
+
+  describe('hasTool()', () => {
+    it('should return true if tool exists', async () => {
+      // Health check
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      });
+
+      // Tools request
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            { name: 'get_current_time', description: 'Get current time' },
+          ],
+        }),
+      });
+
+      const hasTool = await client.hasTool('time', 'get_current_time');
+
+      expect(hasTool).toBe(true);
+    });
+
+    it('should return false if tool does not exist', async () => {
+      // Health check
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'ok' }),
+      });
+
+      // Tools request
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            { name: 'get_current_time', description: 'Get current time' },
+          ],
+        }),
+      });
+
+      const hasTool = await client.hasTool('time', 'nonexistent_tool');
+
+      expect(hasTool).toBe(false);
+    });
+  });
+
+  describe('_performCall()', () => {
+    it('should execute tool successfully', async () => {
+      const mockResponse = { content: { time: '2024-01-15T10:30:00Z' } };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client._performCall('time', 'get_current_time', {
+        timezone: 'UTC',
+      });
+
+      expect(result).toEqual({ time: '2024-01-15T10:30:00Z' });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8090/call/time/get_current_time',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ arguments: { timezone: 'UTC' } }),
+        })
+      );
+    });
+
+    it('should throw ToolExecutionError on tool error', async () => {
+      const mockResponse = {
+        error: {
+          message: 'Tool execution failed',
+          details: { reason: 'Invalid parameter' },
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      await expect(
+        client._performCall('time', 'get_current_time', {})
+      ).rejects.toThrow(ToolExecutionError);
+    });
+  });
+
+  describe('agentTools()', () => {
+    it('should generate callable functions for all tools', async () => {
+      const mockAllTools = {
+        time: [
+          {
+            name: 'get_current_time',
+            description: 'Get current time',
+            inputSchema: {
+              type: 'object',
+              properties: { timezone: { type: 'string' } },
+              required: ['timezone'],
+            },
+          },
+        ],
+        math: [
+          {
+            name: 'add',
+            description: 'Add two numbers',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                a: { type: 'number' },
+                b: { type: 'number' },
+              },
+              required: ['a', 'b'],
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockAllTools,
+      });
+
+      const tools = await client.getAgentTools();
+
+      expect(tools).toHaveLength(2);
+      expect(tools[0].__name__).toBe('time__get_current_time');
+      expect(tools[0].__doc__).toContain('Get current time');
+      expect(tools[0]._serverName).toBe('time');
+      expect(tools[0]._toolName).toBe('get_current_time');
+
+      expect(tools[1].__name__).toBe('math__add');
+      expect(tools[1].__doc__).toContain('Add two numbers');
+      expect(tools[1]._serverName).toBe('math');
+      expect(tools[1]._toolName).toBe('add');
+    });
+
+    it('should return empty array when no tools available', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      });
+
+      const tools = await client.getAgentTools();
+
+      expect(tools).toHaveLength(0);
+    });
+  });
+
+  describe('clearAgentToolsCache()', () => {
+    it('should clear the function builder cache', () => {
+      // This is more of an integration test to ensure the method exists and calls through
+      expect(() => client.clearAgentToolsCache()).not.toThrow();
+    });
+  });
+});
+
+describe('HealthStatusHelpers', () => {
+  describe('isHealthy()', () => {
+    it('should return true for ok status', () => {
+      expect(HealthStatusHelpers.isHealthy('ok')).toBe(true);
+    });
+
+    it('should return false for non-ok status', () => {
+      expect(HealthStatusHelpers.isHealthy('timeout')).toBe(false);
+      expect(HealthStatusHelpers.isHealthy('unreachable')).toBe(false);
+      expect(HealthStatusHelpers.isHealthy('unknown')).toBe(false);
+    });
+  });
+
+  describe('isTransient()', () => {
+    it('should return true for transient statuses', () => {
+      expect(HealthStatusHelpers.isTransient('timeout')).toBe(true);
+      expect(HealthStatusHelpers.isTransient('unknown')).toBe(true);
+    });
+
+    it('should return false for non-transient statuses', () => {
+      expect(HealthStatusHelpers.isTransient('ok')).toBe(false);
+      expect(HealthStatusHelpers.isTransient('unreachable')).toBe(false);
+    });
+  });
+});
