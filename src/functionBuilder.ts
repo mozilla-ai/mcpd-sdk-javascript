@@ -9,6 +9,7 @@
  * The generated functions are self-contained and cached for performance.
  */
 
+import { z } from 'zod';
 import { McpdError, ValidationError } from './errors';
 import type { ToolSchema } from './types';
 import { TypeConverter } from './utils/typeConverter';
@@ -16,11 +17,26 @@ import type { McpdClient } from './client';
 
 /**
  * Interface for generated agent functions with metadata.
+ * Compatible with both LangChain JS and Vercel AI SDK without conversion.
  */
 export interface AgentFunction {
   (...args: any[]): Promise<any>;
-  __name__: string;
-  __doc__: string;
+
+  // Universal properties
+  name: string;
+  description: string;
+
+  // LangChain JS compatibility properties
+  schema: z.ZodSchema<any>;                    // Zod schema for LangChain
+  invoke: (args: any, options?: any) => Promise<any>; // Primary method for LangChain
+  lc_namespace: string[];                      // Required namespace for LangChain
+  returnDirect: boolean;                       // LangChain execution flag
+
+  // Vercel AI SDK compatibility properties
+  inputSchema: z.ZodSchema<any>;              // Zod schema for Vercel AI SDK
+  execute: (args: any, options?: any) => Promise<any>; // Primary method for Vercel AI SDK
+
+  // Internal properties
   _schema: ToolSchema;
   _serverName: string;
   _toolName: string;
@@ -48,6 +64,72 @@ export class FunctionBuilder {
    */
   constructor(client: McpdClient) {
     this.client = client;
+  }
+
+  /**
+   * Convert JSON schema to Zod schema.
+   */
+  private jsonSchemaToZod(jsonSchema: any): z.ZodSchema<any> {
+    if (!jsonSchema || typeof jsonSchema !== 'object') {
+      return z.object({}); // Return empty object for undefined/null schemas
+    }
+
+    switch (jsonSchema.type) {
+      case 'string':
+        return z.string();
+      case 'number':
+        return z.number();
+      case 'integer':
+        return z.number().int();
+      case 'boolean':
+        return z.boolean();
+      case 'array':
+        return z.array(jsonSchema.items ? this.jsonSchemaToZod(jsonSchema.items) : z.any());
+      case 'object':
+        // Handle object schemas that may or may not have properties
+        if (jsonSchema.properties) {
+          const propertyKeys = Object.keys(jsonSchema.properties);
+          if (propertyKeys.length > 0) {
+            const shape: Record<string, z.ZodSchema<any>> = {};
+            const required = new Set(jsonSchema.required || []);
+
+            for (const [key, value] of Object.entries(jsonSchema.properties)) {
+              let schema = this.jsonSchemaToZod(value);
+              if (!required.has(key)) {
+                // Use .nullable().optional() for OpenAI structured outputs compatibility
+                schema = schema.nullable().optional();
+              }
+              shape[key] = schema;
+            }
+
+            return z.object(shape);
+          }
+        }
+        // Return empty object for objects without properties or with empty properties
+        return z.object({});
+      default:
+        // If no type is specified, check if it has properties
+        if (jsonSchema.properties) {
+          const propertyKeys = Object.keys(jsonSchema.properties);
+          if (propertyKeys.length > 0) {
+            const shape: Record<string, z.ZodSchema<any>> = {};
+            const required = new Set(jsonSchema.required || []);
+
+            for (const [key, value] of Object.entries(jsonSchema.properties)) {
+              let schema = this.jsonSchemaToZod(value);
+              if (!required.has(key)) {
+                // Use .nullable().optional() for OpenAI structured outputs compatibility
+                schema = schema.nullable().optional();
+              }
+              shape[key] = schema;
+            }
+
+            return z.object(shape);
+          }
+        }
+        // Default to empty object
+        return z.object({});
+    }
   }
 
   /**
@@ -186,14 +268,47 @@ export class FunctionBuilder {
       return this.client._performCall(serverName, schema.name, cleanParams);
     };
 
+    // Create execution methods for both frameworks
+    const invoke = async (args: any, _options?: any): Promise<any> => {
+      return implementation(args);
+    };
+
+    const execute = async (args: any, _options?: any): Promise<any> => {
+      return implementation(args);
+    };
+
+    // Convert JSON schema to Zod schema for both frameworks
+    const zodSchema = this.jsonSchemaToZod(inputSchema);
+
     // Add metadata to the function
     const qualifiedName = this.functionName(serverName, schema.name);
     const docstring = this.createDocstring(schema);
 
     // Cast to AgentFunction and add metadata
     const agentFunction = implementation as AgentFunction;
-    agentFunction.__name__ = qualifiedName;
-    agentFunction.__doc__ = docstring;
+
+    // Use Object.defineProperty for read-only 'name' property
+    Object.defineProperty(agentFunction, 'name', {
+      value: qualifiedName,
+      writable: false,
+      enumerable: true,
+      configurable: true
+    });
+
+    // Universal properties
+    agentFunction.description = schema.description || docstring.split('\n')[0] || 'No description provided';
+
+    // LangChain JS compatibility properties
+    agentFunction.schema = zodSchema;
+    agentFunction.invoke = invoke;
+    agentFunction.lc_namespace = ['mcpd', 'tools'];
+    agentFunction.returnDirect = false;
+
+    // Vercel AI SDK compatibility properties
+    agentFunction.inputSchema = zodSchema; // Use Zod schema for Vercel AI SDK compatibility
+    agentFunction.execute = execute;
+
+    // Internal properties
     agentFunction._schema = schema;
     agentFunction._serverName = serverName;
     agentFunction._toolName = schema.name;
