@@ -1,0 +1,29 @@
+{
+  "name": "mcpd-vercel-ai-example",
+  "version": "1.0.0",
+  "description": "Example demonstrating mcpd SDK integration with Vercel AI SDK",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.39",
+    "@mozilla-ai/mcpd": "file:../..",
+    "ai": "^5.0.57"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcpd",
+    "vercel-ai",
+    "ai",
+    "tools",
+    "example"
+  ],
+  "author": "Mozilla AI",
+  "license": "Apache-2.0"
+}
