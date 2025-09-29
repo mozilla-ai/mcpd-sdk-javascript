@@ -25,14 +25,18 @@ import {
   McpdClientOptions,
   ServerHealth,
   ToolSchema,
-  ToolCallResponse,
-  ServersResponse,
   ToolsResponse,
   HealthResponse,
 } from './types';
 import { createCache } from './utils/cache';
 import { DynamicCaller } from './dynamicCaller';
 import { FunctionBuilder, type AgentFunction } from './functionBuilder';
+import { API_PATHS } from './apiPaths';
+
+/**
+ * Tool format types for cross-framework compatibility.
+ */
+export type ToolFormat = 'array' | 'object' | 'map';
 
 /**
  * Client for interacting with MCP (Model Context Protocol) servers through an mcpd daemon.
@@ -204,8 +208,8 @@ export class McpdClient {
    * ```
    */
   async servers(): Promise<string[]> {
-    const response = await this.request<ServersResponse>('/servers');
-    return response.servers || [];
+    const response = await this.request<string[]>(API_PATHS.SERVERS);
+    return response;
   }
 
   /**
@@ -250,7 +254,7 @@ export class McpdClient {
       // Check server health first
       await this.ensureServerHealthy(serverName);
 
-      const path = `/tools/${encodeURIComponent(serverName)}`;
+      const path = API_PATHS.SERVER_TOOLS(serverName);
       const response = await this.request<ToolsResponse>(path);
 
       if (!response.tools) {
@@ -259,11 +263,27 @@ export class McpdClient {
 
       return response.tools;
     } else {
-      const response = await this.request<ToolsResponse>('/tools');
-      // Remove the 'tools' key if it exists (it's only for single-server responses)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { tools: _tools, ...servers } = response;
-      return servers as Record<string, ToolSchema[]>;
+      // No global tools endpoint - get tools from each server individually (matching Python SDK)
+      const servers = await this.servers();
+
+      const toolsPromises = servers.map(async (server) => {
+        try {
+          const path = API_PATHS.SERVER_TOOLS(server);
+          const response = await this.request<ToolsResponse>(path);
+          return { server, tools: response.tools || [] };
+        } catch (error) {
+          // If we can't get tools for a server, return empty array
+          console.warn(`Failed to get tools for server '${server}':`, error);
+          return { server, tools: [] };
+        }
+      });
+
+      const results = await Promise.all(toolsPromises);
+
+      return results.reduce((acc, { server, tools }) => {
+        acc[server] = tools;
+        return acc;
+      }, {} as Record<string, ToolSchema[]>);
     }
   }
 
@@ -331,7 +351,7 @@ export class McpdClient {
       }
 
       try {
-        const path = `/health/${encodeURIComponent(serverName)}`;
+        const path = API_PATHS.HEALTH_SERVER(serverName);
         const health = await this.request<ServerHealth>(path);
 
         // Cache successful result
@@ -351,7 +371,7 @@ export class McpdClient {
         throw error;
       }
     } else {
-      return await this.request<HealthResponse>('/health');
+      return await this.request<HealthResponse>(API_PATHS.HEALTH_ALL);
     }
   }
 
@@ -476,16 +496,27 @@ export class McpdClient {
     toolName: string,
     args?: Record<string, any>
   ): Promise<any> {
-    const path = `/call/${encodeURIComponent(serverName)}/${encodeURIComponent(toolName)}`;
+    const path = API_PATHS.TOOL_CALL(serverName, toolName);
 
     try {
-      const response = await this.request<ToolCallResponse>(path, {
+      const response = await this.request<any>(path, {
         method: 'POST',
-        body: JSON.stringify({ arguments: args || {} }),
+        body: JSON.stringify(args || {}),
       });
 
-      // Check for error in response
-      if (response.error) {
+      // The mcpd API returns a JSON string that needs to be parsed
+      // Check if response is a string (the actual tool result as JSON string)
+      if (typeof response === 'string') {
+        try {
+          return JSON.parse(response);
+        } catch {
+          // If it's not valid JSON, return as-is
+          return response;
+        }
+      }
+
+      // Check for error response format
+      if (response && typeof response === 'object' && response.error) {
         throw new ToolExecutionError(
           response.error.message || 'Tool execution failed',
           serverName,
@@ -494,7 +525,8 @@ export class McpdClient {
         );
       }
 
-      return response.content;
+      // Return the response (already parsed object)
+      return response;
     } catch (error) {
       if (error instanceof McpdError) {
         throw error;
@@ -595,18 +627,38 @@ export class McpdClient {
    *
    * // Each function has metadata
    * for (const tool of tools) {
-   *   console.log(`${tool.__name__}: ${tool.__doc__}`);
+   *   console.log(`${tool.name}: ${tool.description}`);
    * }
    *
-   * // Use with an AI agent framework
-   * const agent = new Agent({
-   *   tools: tools,
-   *   model: 'gpt-4',
-   *   instructions: 'Help the user with their tasks.'
-   * });
+   * // Use with LangChain JS (expects array format)
+   * const langchainTools = await client.getAgentTools('array');
+   * const agent = await createOpenAIToolsAgent({ llm, tools: langchainTools, prompt });
+   *
+   * // Use with Vercel AI SDK (expects object format)
+   * const vercelTools = await client.getAgentTools('object');
+   * const result = await generateText({ model, tools: vercelTools, prompt });
    * ```
    */
-  async getAgentTools(): Promise<AgentFunction[]> {
-    return this.agentTools();
+  // TypeScript overloads for different return types based on format parameter
+  async getAgentTools(): Promise<AgentFunction[]>;
+  async getAgentTools(format: 'array'): Promise<AgentFunction[]>;
+  async getAgentTools(format: 'object'): Promise<Record<string, AgentFunction>>;
+  async getAgentTools(format: 'map'): Promise<Map<string, AgentFunction>>;
+  async getAgentTools(format: ToolFormat = 'array'): Promise<AgentFunction[] | Record<string, AgentFunction> | Map<string, AgentFunction>> {
+    // Get tools in array format (default internal representation)
+    const tools = await this.agentTools();
+
+    // Return in requested format
+    switch (format) {
+      case 'object':
+        return Object.fromEntries(tools.map(tool => [tool.name, tool]));
+
+      case 'map':
+        return new Map(tools.map(tool => [tool.name, tool]));
+
+      case 'array':
+      default:
+        return tools;
+    }
   }
 }
