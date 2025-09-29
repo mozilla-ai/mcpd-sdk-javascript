@@ -11,9 +11,11 @@ This SDK provides high-level and dynamic access to those tools, making it easy t
 - Discover and list available `mcpd` hosted MCP servers
 - Retrieve tool definitions and schemas for one or all servers
 - Dynamically invoke any tool using a clean, attribute-based syntax
-- Generate self-contained, deepcopy-safe tool functions for AI agent frameworks
-- Full TypeScript support with comprehensive type definitions
-- Minimal dependencies (only `lru-cache` for caching)
+- Unified AI framework integration - works directly with LangChain JS and Vercel AI SDK
+- Generate self-contained, framework-compatible tool functions without conversion layers
+- Multiple output formats (`'array'`, `'object'`, `'map'`) for different framework needs
+- Full TypeScript support with comprehensive type definitions and overloads
+- Minimal dependencies (`lru-cache` for caching, `zod` for schema validation)
 - Works in both Node.js and browser environments
 
 ## Installation
@@ -173,30 +175,58 @@ if (await client.hasTool('time', 'get_current_time')) {
 }
 ```
 
-#### `client.getAgentTools()`
-Generate callable functions for use with AI agent frameworks.
+#### `client.getAgentTools(format?)`
+Generate callable functions that work directly with AI agent frameworks. No conversion layers needed.
 
 ```typescript
-// Get all tools as callable functions
-const tools = await client.getAgentTools();
+// TypeScript overloads provide proper type inference:
+// getAgentTools(): Promise<AgentFunction[]>
+// getAgentTools('array'): Promise<AgentFunction[]>
+// getAgentTools('object'): Promise<Record<string, AgentFunction>>
+// getAgentTools('map'): Promise<Map<string, AgentFunction>>
 
-// Each function has metadata
-for (const tool of tools) {
-  console.log(`${tool.__name__}: ${tool.__doc__}`);
-  console.log(`Server: ${tool._serverName}, Tool: ${tool._toolName}`);
-}
+// Use with LangChain JS (expects array format)
+import { ChatOpenAI } from '@langchain/openai';
 
-// Call tools directly
-const timeFunction = tools.find(t => t._toolName === 'get_current_time');
-if (timeFunction) {
-  const result = await timeFunction({ timezone: 'UTC' });
-}
+const langchainTools = await client.getAgentTools('array');
 
-// Use with AI frameworks
-const agent = new SomeAIFramework({
-  tools: tools,
-  model: 'gpt-4'
+// Bind tools to model
+const model = new ChatOpenAI({ modelName: 'gpt-4o-mini' });
+const modelWithTools = model.bindTools(langchainTools);
+
+// Or use with agents
+import { createOpenAIToolsAgent } from 'langchain/agents';
+const agent = await createOpenAIToolsAgent({
+  llm,
+  tools: langchainTools,
+  prompt
 });
+
+// Use with Vercel AI SDK (expects object format)
+import { generateText } from 'ai';
+
+const vercelTools = await client.getAgentTools('object');
+const result = await generateText({
+  model: openai('gpt-4o-mini'),
+  tools: vercelTools,
+  prompt: 'What time is it in Tokyo?'
+});
+
+// Use with Map for efficient lookups
+const toolMap = await client.getAgentTools('map');
+const timeTool = toolMap.get('time__get_current_time');
+if (timeTool) {
+  const result = await timeTool({ timezone: 'UTC' });
+}
+
+// Each function has metadata for both frameworks
+const tools = await client.getAgentTools();
+for (const tool of tools) {
+  console.log(`${tool.name}: ${tool.description}`);
+  console.log(`Server: ${tool._serverName}, Tool: ${tool._toolName}`);
+  // LangChain properties: tool.schema, tool.invoke, tool.lc_namespace
+  // Vercel AI properties: tool.inputSchema, tool.execute
+}
 ```
 
 #### `client.clearAgentToolsCache()`
