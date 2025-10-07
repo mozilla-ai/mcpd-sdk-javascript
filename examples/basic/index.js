@@ -27,8 +27,8 @@ async function main() {
 
     // Get health status for all servers
     console.log('Server health:');
-    const health = await client.getServerHealth();
-    for (const [serverName, serverHealth] of Object.entries(health)) {
+    const healthByServer = await client.getServerHealth();
+    for (const [serverName, serverHealth] of Object.entries(healthByServer)) {
       console.log(`  ${serverName}: ${serverHealth.status}`);
     }
     console.log();
