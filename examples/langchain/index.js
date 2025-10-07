@@ -48,7 +48,7 @@ async function main() {
     }
 
     // List available tools
-    console.log('\nAvailable tools:');
+    console.log('Available tools:');
     for (const tool of tools) {
       // Clean up description - take only the first line and remove extra whitespace
       const cleanDescription = tool.description

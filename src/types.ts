@@ -32,15 +32,41 @@ export const HealthStatusHelpers = {
 };
 
 /**
+ * Error detail from Huma API error responses.
+ * Location and value are optional as the API doesn't always include them.
+ */
+export interface ErrorDetail {
+  location?: string;
+  message: string;
+  value?: unknown;
+}
+
+/**
+ * Huma API error model (RFC 7807 Problem Details).
+ * Used for all API errors including HTTP errors and tool execution failures.
+ */
+export interface ErrorModel {
+  $schema?: string;
+  detail: string;
+  errors?: ErrorDetail[];
+  instance?: string;
+  status: number;
+  title: string;
+  type: string;
+}
+
+/**
  * JSON Schema definition for tool parameters.
  */
 export interface JsonSchema {
   type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   properties?: Record<string, any>;
   required?: string[];
   additionalProperties?: boolean;
   items?: JsonSchema;
   description?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -60,27 +86,8 @@ export interface ServerHealth {
   status: string;
   timestamp?: string;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
-}
-
-/**
- * Tool call response from the mcpd daemon.
- */
-export interface ToolCallResponse {
-  content?: any;
-  error?: {
-    code?: string;
-    message?: string;
-    details?: any;
-  };
-  [key: string]: any;
-}
-
-/**
- * Server list response from the mcpd daemon.
- */
-export interface ServersResponse {
-  servers: string[];
 }
 
 /**
@@ -92,10 +99,11 @@ export interface ToolsResponse {
 }
 
 /**
- * Health response from the mcpd daemon.
+ * Health response from the mcpd API.
  */
 export interface HealthResponse {
-  [serverName: string]: ServerHealth;
+  $schema?: string;
+  servers: Array<ServerHealth & { name: string }>;
 }
 
 /**
@@ -116,21 +124,17 @@ export interface McpdClientOptions {
    * TTL in seconds for caching server health checks.
    * Default: 10
    */
-  serverHealthCacheTtl?: number;
+  healthCacheTtl?: number;
+
+  /**
+   * TTL in seconds for caching server list and tool schemas.
+   * Default: 60
+   */
+  serverCacheTtl?: number;
 
   /**
    * Request timeout in milliseconds.
    * Default: 30000 (30 seconds)
    */
   timeout?: number;
-}
-
-/**
- * Options for making HTTP requests to the mcpd daemon.
- */
-export interface RequestOptions {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: any;
-  signal?: AbortSignal;
 }

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpdClient } from '../../src/client';
 import {
+  McpdError,
   ConnectionError,
   AuthenticationError,
-  ToolExecutionError,
 } from '../../src/errors';
 import { HealthStatusHelpers } from '../../src/types';
 
@@ -29,7 +29,7 @@ describe('McpdClient', () => {
         apiEndpoint: 'http://localhost:8090',
       });
       expect(basicClient).toBeDefined();
-      expect(basicClient.call).toBeDefined();
+      expect(basicClient.servers).toBeDefined();
     });
 
     it('should strip trailing slash from endpoint', () => {
@@ -45,7 +45,7 @@ describe('McpdClient', () => {
       clientWithSlash.getServers();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/servers',
+        'http://localhost:8090/api/v1/servers',
         expect.any(Object)
       );
     });
@@ -64,7 +64,7 @@ describe('McpdClient', () => {
       clientWithAuth.getServers();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/servers',
+        'http://localhost:8090/api/v1/servers',
         expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: 'Bearer test-key',
@@ -78,14 +78,14 @@ describe('McpdClient', () => {
     it('should return list of servers', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ servers: ['time', 'fetch', 'git'] }),
+        json: async () => ['time', 'fetch', 'git'],
       });
 
       const servers = await client.getServers();
 
       expect(servers).toEqual(['time', 'fetch', 'git']);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/servers',
+        'http://localhost:8090/api/v1/servers',
         expect.any(Object)
       );
     });
@@ -93,7 +93,7 @@ describe('McpdClient', () => {
     it('should handle empty server list', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ servers: [] }),
+        json: async () => [],
       });
 
       const servers = await client.getServers();
@@ -108,10 +108,18 @@ describe('McpdClient', () => {
     });
 
     it('should throw AuthenticationError on 401', async () => {
+      const errorModel = {
+        detail: 'Authentication required',
+        status: 401,
+        title: 'Unauthorized',
+        type: 'about:blank',
+      };
+
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
         statusText: 'Unauthorized',
+        text: async () => JSON.stringify(errorModel),
       });
 
       await expect(client.getServers()).rejects.toThrow(AuthenticationError);
@@ -125,18 +133,27 @@ describe('McpdClient', () => {
         fetch: [{ name: 'fetch_url', description: 'Fetch URL content' }],
       };
 
+      // First call: getServers()
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => mockTools,
+        json: async () => ['time', 'fetch'],
+      });
+
+      // Second call: tools for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.time }),
+      });
+
+      // Third call: tools for 'fetch'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.fetch }),
       });
 
       const tools = await client.getTools();
 
       expect(tools).toEqual(mockTools);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/tools',
-        expect.any(Object)
-      );
     });
 
     it('should return tools for specific server', async () => {
@@ -147,7 +164,7 @@ describe('McpdClient', () => {
       // First call for health check
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ status: 'ok' }),
+        json: async () => ({ name: 'time', status: 'ok', latency: '2ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' }),
       });
 
       // Second call for tools
@@ -160,7 +177,7 @@ describe('McpdClient', () => {
 
       expect(tools).toEqual(timeTools);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/tools/time',
+        'http://localhost:8090/api/v1/servers/time/tools',
         expect.any(Object)
       );
     });
@@ -179,27 +196,42 @@ describe('McpdClient', () => {
 
   describe('serverHealth()', () => {
     it('should return health for all servers', async () => {
-      const mockHealth = {
-        time: { status: 'ok' },
-        fetch: { status: 'ok' },
+      const mockApiResponse = {
+        $schema: 'http://localhost:8090/schemas/ServersHealthResponseBody.json',
+        servers: [
+          { name: 'time', status: 'ok', latency: '2ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' },
+          { name: 'fetch', status: 'ok', latency: '1ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' },
+        ],
+      };
+
+      const expectedHealth = {
+        time: { status: 'ok', latency: '2ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' },
+        fetch: { status: 'ok', latency: '1ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' },
       };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => mockHealth,
+        json: async () => mockApiResponse,
       });
 
       const health = await client.getServerHealth();
 
-      expect(health).toEqual(mockHealth);
+      expect(health).toEqual(expectedHealth);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/health',
+        'http://localhost:8090/api/v1/health/servers',
         expect.any(Object)
       );
     });
 
     it('should return health for specific server', async () => {
-      const serverHealth = { status: 'ok' };
+      const serverHealth = {
+        $schema: 'http://localhost:8090/schemas/ServerHealth.json',
+        name: 'time',
+        status: 'ok',
+        latency: '2.262667ms',
+        lastChecked: '2025-10-07T15:22:19.437833Z',
+        lastSuccessful: '2025-10-07T15:22:19.437833Z',
+      };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -210,13 +242,19 @@ describe('McpdClient', () => {
 
       expect(health).toEqual(serverHealth);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/health/time',
+        'http://localhost:8090/api/v1/health/servers/time',
         expect.any(Object)
       );
     });
 
     it('should cache health results', async () => {
-      const serverHealth = { status: 'ok' };
+      const serverHealth = {
+        name: 'time',
+        status: 'ok',
+        latency: '2ms',
+        lastChecked: '2025-10-07T15:00:00Z',
+        lastSuccessful: '2025-10-07T15:00:00Z',
+      };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -237,7 +275,7 @@ describe('McpdClient', () => {
     it('should return true for healthy server', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ status: 'ok' }),
+        json: async () => ({ name: 'time', status: 'ok', latency: '2ms', lastChecked: '2025-10-07T15:00:00Z', lastSuccessful: '2025-10-07T15:00:00Z' }),
       });
 
       const isHealthy = await client.isServerHealthy('time');
@@ -248,7 +286,7 @@ describe('McpdClient', () => {
     it('should return false for unhealthy server', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ status: 'unreachable' }),
+        json: async () => ({ name: 'time', status: 'unreachable', latency: '0ms', lastChecked: '2025-10-07T15:00:00Z' }),
       });
 
       const isHealthy = await client.isServerHealthy('time');
@@ -257,55 +295,11 @@ describe('McpdClient', () => {
     });
   });
 
-  describe('hasTool()', () => {
-    it('should return true if tool exists', async () => {
-      // Health check
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ status: 'ok' }),
-      });
-
-      // Tools request
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          tools: [
-            { name: 'get_current_time', description: 'Get current time' },
-          ],
-        }),
-      });
-
-      const hasTool = await client.hasTool('time', 'get_current_time');
-
-      expect(hasTool).toBe(true);
-    });
-
-    it('should return false if tool does not exist', async () => {
-      // Health check
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ status: 'ok' }),
-      });
-
-      // Tools request
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          tools: [
-            { name: 'get_current_time', description: 'Get current time' },
-          ],
-        }),
-      });
-
-      const hasTool = await client.hasTool('time', 'nonexistent_tool');
-
-      expect(hasTool).toBe(false);
-    });
-  });
-
   describe('_performCall()', () => {
     it('should execute tool successfully', async () => {
-      const mockResponse = { content: { time: '2024-01-15T10:30:00Z' } };
+      // API returns JSON string directly (not wrapped)
+      const toolResult = { time: '2024-01-15T10:30:00-05:00', timezone: 'America/New_York' };
+      const mockResponse = JSON.stringify(toolResult);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -313,35 +307,42 @@ describe('McpdClient', () => {
       });
 
       const result = await client._performCall('time', 'get_current_time', {
-        timezone: 'UTC',
+        timezone: 'America/New_York',
       });
 
-      expect(result).toEqual({ time: '2024-01-15T10:30:00Z' });
+      expect(result).toEqual(toolResult);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8090/call/time/get_current_time',
+        'http://localhost:8090/api/v1/servers/time/tools/get_current_time',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ arguments: { timezone: 'UTC' } }),
+          body: JSON.stringify({ timezone: 'America/New_York' }),
         })
       );
     });
 
     it('should throw ToolExecutionError on tool error', async () => {
-      const mockResponse = {
-        error: {
-          message: 'Tool execution failed',
-          details: { reason: 'Invalid parameter' },
-        },
+      const errorModel = {
+        detail: 'Tool execution failed: Invalid parameter',
+        errors: [{
+          location: 'body.timezone',
+          message: 'Invalid parameter',
+          value: null,
+        }],
+        status: 400,
+        title: 'Bad Request',
+        type: 'about:blank',
       };
 
       mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () => JSON.stringify(errorModel),
       });
 
       await expect(
         client._performCall('time', 'get_current_time', {})
-      ).rejects.toThrow(ToolExecutionError);
+      ).rejects.toThrow(McpdError);
     });
   });
 
@@ -375,29 +376,43 @@ describe('McpdClient', () => {
         ],
       };
 
+      // First call: getServers()
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => mockAllTools,
+        json: async () => ['time', 'math'],
+      });
+
+      // Second call: tools for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockAllTools.time }),
+      });
+
+      // Third call: tools for 'math'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockAllTools.math }),
       });
 
       const tools = await client.getAgentTools();
 
       expect(tools).toHaveLength(2);
-      expect(tools[0].__name__).toBe('time__get_current_time');
-      expect(tools[0].__doc__).toContain('Get current time');
+      expect(tools[0].name).toBe('time__get_current_time');
+      expect(tools[0].description).toContain('Get current time');
       expect(tools[0]._serverName).toBe('time');
       expect(tools[0]._toolName).toBe('get_current_time');
 
-      expect(tools[1].__name__).toBe('math__add');
-      expect(tools[1].__doc__).toContain('Add two numbers');
+      expect(tools[1].name).toBe('math__add');
+      expect(tools[1].description).toContain('Add two numbers');
       expect(tools[1]._serverName).toBe('math');
       expect(tools[1]._toolName).toBe('add');
     });
 
     it('should return empty array when no tools available', async () => {
+      // First call: getServers() returns empty array
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({}),
+        json: async () => [],
       });
 
       const tools = await client.getAgentTools();

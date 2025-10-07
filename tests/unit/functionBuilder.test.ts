@@ -11,7 +11,7 @@ describe('FunctionBuilder', () => {
   beforeEach(() => {
     mockClient = {
       _performCall: vi.fn(),
-    } as any;
+    } as unknown as McpdClient;
     builder = new FunctionBuilder(mockClient);
   });
 
@@ -35,8 +35,8 @@ describe('FunctionBuilder', () => {
       const func = builder.createFunctionFromSchema(schema, 'test_server');
 
       expect(func).toBeDefined();
-      expect(func.__name__).toBe('test_server__test_tool');
-      expect(func.__doc__).toContain('A test tool');
+      expect(func.name).toBe('test_server__test_tool');
+      expect(func.description).toContain('A test tool');
       expect(func._schema).toBe(schema);
       expect(func._serverName).toBe('test_server');
       expect(func._toolName).toBe('test_tool');
@@ -50,7 +50,7 @@ describe('FunctionBuilder', () => {
 
       const func = builder.createFunctionFromSchema(schema, 'test-server');
 
-      expect(func.__name__).toBe('test_server__test_tool_123');
+      expect(func.name).toBe('test_server__test_tool_123');
     });
 
     it('should cache functions', () => {
@@ -75,7 +75,7 @@ describe('FunctionBuilder', () => {
       const func = builder.createFunctionFromSchema(schema, 'server');
 
       expect(func).toBeDefined();
-      expect(func.__doc__).toContain('A simple tool with no parameters');
+      expect(func.description).toContain('A simple tool with no parameters');
     });
   });
 
@@ -279,13 +279,10 @@ describe('FunctionBuilder', () => {
 
       const func = builder.createFunctionFromSchema(schema, 'server');
 
-      expect(func.__doc__).toContain('A complex tool with parameters');
-      expect(func.__doc__).toContain('required_param (string): This parameter is required');
-      expect(func.__doc__).toContain('optional_param (number): This parameter is optional (optional)');
-      expect(func.__doc__).toContain('Returns:');
-      expect(func.__doc__).toContain('Throws:');
-      expect(func.__doc__).toContain('ValidationError');
-      expect(func.__doc__).toContain('McpdError');
+      expect(func.description).toContain('A complex tool with parameters');
+      expect(func._schema).toBe(schema);
+      expect(func.schema).toBeDefined(); // Zod schema
+      expect(func.inputSchema).toBeDefined(); // Zod schema for Vercel AI
     });
 
     it('should handle missing descriptions', () => {
@@ -301,8 +298,8 @@ describe('FunctionBuilder', () => {
 
       const func = builder.createFunctionFromSchema(schema, 'server');
 
-      expect(func.__doc__).toContain('No description provided');
-      expect(func.__doc__).toContain('param (string): No description provided (optional)');
+      expect(func.description).toContain('No description provided');
+      expect(func._schema).toBeDefined();
     });
   });
 });

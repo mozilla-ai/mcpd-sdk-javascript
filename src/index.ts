@@ -7,8 +7,8 @@
  *
  * This package provides:
  * - McpdClient: Main client for server management and tool execution
- * - Dynamic calling: Natural syntax like client.call.server.tool(args)
- * - Agent-ready functions: Generate callable functions via agentTools() for AI frameworks
+ * - Dynamic calling: Natural syntax like client.servers.time.get_current_time(args)
+ * - Agent-ready functions: Generate callable functions via getAgentTools() for AI frameworks
  * - Type-safe function generation: Create callable functions from tool schemas
  * - Comprehensive error handling: Detailed exceptions for different failure modes
  *
@@ -37,13 +37,9 @@ export {
   type JsonSchema,
   type ToolSchema,
   type ServerHealth,
-  type ToolCallResponse,
-  type ServersResponse,
   type ToolsResponse,
   type HealthResponse,
   type McpdClientOptions,
-  type RequestOptions,
+  type ErrorDetail,
+  type ErrorModel,
 } from './types';
-
-// Re-export McpdClient as default
-export { McpdClient as default } from './client';

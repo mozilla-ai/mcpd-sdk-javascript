@@ -5,6 +5,8 @@
  * different error scenarios appropriately.
  */
 
+import type { ErrorModel } from './types';
+
 /**
  * Base exception for all mcpd SDK errors.
  *
@@ -127,20 +129,20 @@ export class ToolNotFoundError extends McpdError {
 export class ToolExecutionError extends McpdError {
   public readonly serverName: string | undefined;
   public readonly toolName: string | undefined;
-  public readonly details: Record<string, any> | undefined;
+  public readonly errorModel: ErrorModel | undefined;
 
   constructor(
     message: string,
     serverName?: string,
     toolName?: string,
-    details?: Record<string, any>,
+    errorModel?: ErrorModel,
     cause?: Error
   ) {
     super(message, cause);
     this.name = 'ToolExecutionError';
     this.serverName = serverName;
     this.toolName = toolName;
-    this.details = details;
+    this.errorModel = errorModel;
     Object.setPrototypeOf(this, ToolExecutionError.prototype);
   }
 }

@@ -9,9 +9,9 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.39",
+    "@ai-sdk/openai": "^2.0.44",
     "@mozilla-ai/mcpd": "file:../..",
-    "ai": "^5.0.57"
+    "ai": "^5.0.60"
   },
   "engines": {
     "node": ">=18.0.0"

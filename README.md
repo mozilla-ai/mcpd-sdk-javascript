@@ -30,6 +30,8 @@ pnpm add @mozilla-ai/mcpd
 
 ## Quick Start
 
+> **Note:** This SDK works seamlessly with both JavaScript and TypeScript. TypeScript users automatically get full type safety and autocomplete via the included `.d.ts` type definitions—no additional setup required.
+
 ### JavaScript
 
 ```javascript
@@ -50,7 +52,7 @@ console.log(tools);
 
 // Dynamically call a tool
 try {
-  const result = await client.call.time.get_current_time({ timezone: 'UTC' });
+  const result = await client.servers.time.get_current_time({ timezone: 'UTC' });
   console.log(result);
 } catch (error) {
   if (error instanceof McpdError) {
@@ -67,10 +69,11 @@ import { McpdClient, McpdError, ToolSchema } from '@mozilla-ai/mcpd';
 const client = new McpdClient({
   apiEndpoint: 'http://localhost:8090',
   apiKey: 'optional-key', // Optional API key
-  serverHealthCacheTtl: 10, // Cache health checks for 10 seconds
+  healthCacheTtl: 10, // Cache health checks for 10 seconds
+  serverCacheTtl: 60, // Cache server/tool metadata for 60 seconds
 });
 
-// TypeScript provides full type safety and autocomplete
+// Full type safety and autocomplete
 const servers: string[] = await client.getServers();
 
 // Get tools with proper typing
@@ -78,7 +81,7 @@ const tools: ToolSchema[] = await client.getTools('time');
 
 // Dynamic tool invocation with error handling
 try {
-  const result = await client.call.time.get_current_time({
+  const result = await client.servers.time.get_current_time({
     timezone: 'UTC'
   });
   console.log(result);
@@ -100,7 +103,8 @@ import { McpdClient } from '@mozilla-ai/mcpd';
 const client = new McpdClient({
   apiEndpoint: 'http://localhost:8090', // Required
   apiKey: 'optional-key',                // Optional: API key for authentication
-  serverHealthCacheTtl: 10,               // Optional: TTL in seconds for health cache (default: 10)
+  healthCacheTtl: 10,                     // Optional: TTL in seconds for health cache (default: 10)
+  serverCacheTtl: 60,                     // Optional: TTL in seconds for server/tools cache (default: 60)
   timeout: 30000,                         // Optional: Request timeout in ms (default: 30000)
 });
 ```
@@ -128,18 +132,64 @@ const timeTools = await client.getTools('time');
 // Returns: [{ name: 'get_current_time', description: '...', inputSchema: {...} }]
 ```
 
-#### `client.call.<server>.<tool>(args)`
-Dynamically invoke any tool using natural syntax.
+#### `client.servers.<server>.<tool>(args)`
+Dynamically invoke any tool using natural syntax. Supports both snake_case and camelCase.
 
 ```typescript
-// Call a tool with parameters
-const result = await client.call.weather.get_forecast({
+// Call a tool with parameters (snake_case)
+const result = await client.servers.weather.get_forecast({
   city: 'Tokyo',
   days: 3
 });
 
+// Call with camelCase (automatically converts to snake_case)
+const result2 = await client.servers.weather.getForecast({
+  city: 'London',
+  days: 5
+});
+
 // Call without parameters
-const time = await client.call.time.get_current_time();
+const time = await client.servers.time.get_current_time();
+// Or using camelCase
+const time2 = await client.servers.time.getCurrentTime();
+```
+
+#### `client.getServer(serverName: string)`
+Get a ServerProxy for programmatic access. Useful in loops or when server name is dynamic.
+
+```typescript
+// Explicit server access
+const timeServer = client.getServer('time');
+const result = await timeServer.get_current_time({ timezone: 'UTC' });
+
+// Useful in loops
+const servers = await client.getServers();
+for (const serverName of servers) {
+  const server = client.getServer(serverName);
+  const tools = await client.getTools(serverName);
+  console.log(`${serverName}: ${tools.length} tools`);
+}
+```
+
+#### `server.hasTool(toolName: string)`
+Check if a specific tool exists on a server. Supports both snake_case and camelCase.
+
+```typescript
+// Check if tool exists
+if (await client.servers.time.hasTool('get_current_time')) {
+  const result = await client.servers.time.get_current_time();
+}
+
+// Also works with camelCase
+if (await client.servers.time.hasTool('getCurrentTime')) {
+  const result = await client.servers.time.getCurrentTime();
+}
+
+// Using getServer() for programmatic access
+const server = client.getServer('time');
+if (await server.hasTool('get_current_time')) {
+  const result = await server.get_current_time();
+}
 ```
 
 #### `client.getServerHealth(serverName?: string)`
@@ -161,17 +211,7 @@ Check if a specific server is healthy.
 ```typescript
 if (await client.isServerHealthy('time')) {
   // Server is healthy, safe to use
-  const result = await client.call.time.get_current_time();
-}
-```
-
-#### `client.hasTool(serverName: string, toolName: string)`
-Check if a specific tool exists on a server.
-
-```typescript
-if (await client.hasTool('time', 'get_current_time')) {
-  // Tool exists, safe to call
-  const result = await client.call.time.get_current_time();
+  const result = await client.servers.time.get_current_time();
 }
 ```
 
@@ -256,7 +296,7 @@ import {
 } from '@mozilla-ai/mcpd';
 
 try {
-  const result = await client.call.unknown.tool();
+  const result = await client.servers.unknown.tool();
 } catch (error) {
   if (error instanceof ToolNotFoundError) {
     console.error(`Tool not found: ${error.toolName} on server ${error.serverName}`);

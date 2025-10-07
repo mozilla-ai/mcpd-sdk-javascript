@@ -1,13 +1,13 @@
 /**
- * JSON Schema to TypeScript type conversion utilities.
+ * JSON Schema to JavaScript type conversion and validation utilities.
  *
  * This module provides the TypeConverter class that handles conversion between
- * JSON Schema type definitions and TypeScript type information. It supports all
- * standard JSON Schema types including complex constructs like unions (anyOf)
- * and properly maps nullable types to TypeScript's type system.
+ * JSON Schema type definitions and JavaScript runtime type information. It supports
+ * all standard JSON Schema types including complex constructs like unions (anyOf)
+ * and provides runtime validation of values against their schemas.
  *
- * Used primarily by the FunctionBuilder to create accurate type information
- * for dynamically generated functions.
+ * Used primarily by the FunctionBuilder for parameter validation and generating
+ * human-readable type descriptions for dynamically generated functions.
  */
 
 import type { JsonSchema } from '../types';
@@ -95,7 +95,7 @@ export class TypeConverter {
    * Validate a value against a JSON schema type.
    * Returns true if valid, false otherwise.
    */
-  static validateValue(value: any, schemaDef: JsonSchema): boolean {
+  static validateValue(value: unknown, schemaDef: JsonSchema): boolean {
     if (value === null || value === undefined) {
       // Null/undefined handling depends on whether the schema allows null
       return schemaDef.type === 'null' || (schemaDef.anyOf?.some((s: JsonSchema) => s.type === 'null') ?? false);
@@ -125,7 +125,6 @@ export class TypeConverter {
       case 'array':
         if (!Array.isArray(value)) return false;
         if (schemaDef.items) {
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           return value.every((item) => this.validateValue(item, schemaDef.items!));
         }
         return true;

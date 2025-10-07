@@ -20,21 +20,23 @@ import type { McpdClient } from './client';
  * Compatible with both LangChain JS and Vercel AI SDK without conversion.
  */
 export interface AgentFunction {
-  (...args: any[]): Promise<any>;
+  (...args: unknown[]): Promise<unknown>;
 
   // Universal properties
   name: string;
   description: string;
 
   // LangChain JS compatibility properties
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema: z.ZodSchema<any>;                    // Zod schema for LangChain
-  invoke: (args: any, options?: any) => Promise<any>; // Primary method for LangChain
+  invoke: (args: unknown) => Promise<unknown>; // Primary method for LangChain
   lc_namespace: string[];                      // Required namespace for LangChain
   returnDirect: boolean;                       // LangChain execution flag
 
   // Vercel AI SDK compatibility properties
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inputSchema: z.ZodSchema<any>;              // Zod schema for Vercel AI SDK
-  execute: (args: any, options?: any) => Promise<any>; // Primary method for Vercel AI SDK
+  execute: (args: unknown) => Promise<unknown>; // Primary method for Vercel AI SDK
 
   // Internal properties
   _schema: ToolSchema;
@@ -53,8 +55,8 @@ export interface AgentFunction {
  * controlled by the owning McpdClient via clearCache().
  */
 export class FunctionBuilder {
-  private client: McpdClient;
-  private functionCache: Map<string, AgentFunction> = new Map();
+  #client: McpdClient;
+  #functionCache: Map<string, AgentFunction> = new Map();
 
   /**
    * Initialize a FunctionBuilder for the given client.
@@ -63,13 +65,14 @@ export class FunctionBuilder {
    *                the generated functions via _performCall().
    */
   constructor(client: McpdClient) {
-    this.client = client;
+    this.#client = client;
   }
 
   /**
    * Convert JSON schema to Zod schema.
    */
-  private jsonSchemaToZod(jsonSchema: any): z.ZodSchema<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  #jsonSchemaToZod(jsonSchema: any): z.ZodSchema<any> {
     if (!jsonSchema || typeof jsonSchema !== 'object') {
       return z.object({}); // Return empty object for undefined/null schemas
     }
@@ -84,17 +87,18 @@ export class FunctionBuilder {
       case 'boolean':
         return z.boolean();
       case 'array':
-        return z.array(jsonSchema.items ? this.jsonSchemaToZod(jsonSchema.items) : z.any());
+        return z.array(jsonSchema.items ? this.#jsonSchemaToZod(jsonSchema.items) : z.any());
       case 'object':
         // Handle object schemas that may or may not have properties
         if (jsonSchema.properties) {
           const propertyKeys = Object.keys(jsonSchema.properties);
           if (propertyKeys.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const shape: Record<string, z.ZodSchema<any>> = {};
             const required = new Set(jsonSchema.required || []);
 
             for (const [key, value] of Object.entries(jsonSchema.properties)) {
-              let schema = this.jsonSchemaToZod(value);
+              let schema = this.#jsonSchemaToZod(value);
               if (!required.has(key)) {
                 // Use .nullable().optional() for OpenAI structured outputs compatibility
                 schema = schema.nullable().optional();
@@ -112,11 +116,12 @@ export class FunctionBuilder {
         if (jsonSchema.properties) {
           const propertyKeys = Object.keys(jsonSchema.properties);
           if (propertyKeys.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const shape: Record<string, z.ZodSchema<any>> = {};
             const required = new Set(jsonSchema.required || []);
 
             for (const [key, value] of Object.entries(jsonSchema.properties)) {
-              let schema = this.jsonSchemaToZod(value);
+              let schema = this.#jsonSchemaToZod(value);
               if (!required.has(key)) {
                 // Use .nullable().optional() for OpenAI structured outputs compatibility
                 schema = schema.nullable().optional();
@@ -180,14 +185,13 @@ export class FunctionBuilder {
     const cacheKey = `${serverName}__${schema.name}`;
 
     // Return cached function if it exists
-    if (this.functionCache.has(cacheKey)) {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      return this.functionCache.get(cacheKey)!;
+    if (this.#functionCache.has(cacheKey)) {
+      return this.#functionCache.get(cacheKey)!;
     }
 
     try {
       const generatedFunction = this.buildFunction(schema, serverName);
-      this.functionCache.set(cacheKey, generatedFunction);
+      this.#functionCache.set(cacheKey, generatedFunction);
       return generatedFunction;
     } catch (error) {
       throw new McpdError(`Error creating function ${cacheKey}: ${(error as Error).message}`, error as Error);
@@ -207,13 +211,13 @@ export class FunctionBuilder {
     const required = new Set(inputSchema.required || []);
 
     // Create the function implementation
-    const implementation = async (...args: any[]): Promise<any> => {
+    const implementation = async (...args: unknown[]): Promise<unknown> => {
       // Handle both positional and named arguments
-      let params: Record<string, any> = {};
+      let params: Record<string, unknown> = {};
 
       if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
         // Single object argument (named parameters)
-        params = args[0];
+        params = args[0] as Record<string, unknown>;
       } else {
         // Positional arguments - map to schema properties in order
         const propertyNames = Object.keys(properties);
@@ -257,7 +261,7 @@ export class FunctionBuilder {
       }
 
       // Filter out null/undefined values
-      const cleanParams: Record<string, any> = {};
+      const cleanParams: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(params)) {
         if (value !== null && value !== undefined) {
           cleanParams[key] = value;
@@ -265,20 +269,20 @@ export class FunctionBuilder {
       }
 
       // Make the API call
-      return this.client._performCall(serverName, schema.name, cleanParams);
+      return this.#client._performCall(serverName, schema.name, cleanParams);
     };
 
     // Create execution methods for both frameworks
-    const invoke = async (args: any, _options?: any): Promise<any> => {
+    const invoke = async (args: unknown): Promise<unknown> => {
       return implementation(args);
     };
 
-    const execute = async (args: any, _options?: any): Promise<any> => {
+    const execute = async (args: unknown): Promise<unknown> => {
       return implementation(args);
     };
 
     // Convert JSON schema to Zod schema for both frameworks
-    const zodSchema = this.jsonSchemaToZod(inputSchema);
+    const zodSchema = this.#jsonSchemaToZod(inputSchema);
 
     // Add metadata to the function
     const qualifiedName = this.functionName(serverName, schema.name);
@@ -365,7 +369,7 @@ export class FunctionBuilder {
    * regenerated on the next call to createFunctionFromSchema().
    */
   clearCache(): void {
-    this.functionCache.clear();
+    this.#functionCache.clear();
   }
 
   /**
@@ -374,6 +378,6 @@ export class FunctionBuilder {
    * @returns The number of functions currently cached
    */
   getCacheSize(): number {
-    return this.functionCache.size;
+    return this.#functionCache.size;
   }
 }

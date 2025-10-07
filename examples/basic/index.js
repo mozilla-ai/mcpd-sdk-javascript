@@ -9,7 +9,7 @@
  * - Error handling
  */
 
-const { McpdClient, McpdError } = require('@mozilla-ai/mcpd');
+import { McpdClient, McpdError } from '@mozilla-ai/mcpd';
 
 async function main() {
   // Initialize the client
@@ -23,7 +23,6 @@ async function main() {
     console.log('Available servers:');
     const servers = await client.getServers();
     console.log(servers);
-    console.log();
 
     // Get health status for all servers
     console.log('Server health:');
@@ -31,7 +30,6 @@ async function main() {
     for (const [serverName, serverHealth] of Object.entries(healthByServer)) {
       console.log(`  ${serverName}: ${serverHealth.status}`);
     }
-    console.log();
 
     // If we have a 'time' server, demonstrate using it
     if (servers.includes('time')) {
@@ -41,32 +39,34 @@ async function main() {
       for (const tool of tools) {
         console.log(`  - ${tool.name}: ${tool.description || 'No description'}`);
       }
-      console.log();
 
       // Check if get_current_time tool exists
-      if (await client.hasTool('time', 'get_current_time')) {
+      if (await client.servers.time.hasTool('get_current_time')) {
         // Call the tool
         console.log('Getting current time in different timezones:');
 
-        const utcTime = await client.call.time.get_current_time({ timezone: 'UTC' });
-        console.log('  UTC:', utcTime);
+        const utcTime = await client.servers.time.get_current_time({ timezone: 'UTC' });
+        console.log('UTC:');
+        console.log(utcTime);
 
-        const tokyoTime = await client.call.time.get_current_time({ timezone: 'Asia/Tokyo' });
-        console.log('  Tokyo:', tokyoTime);
+        const tokyoTime = await client.servers.time.get_current_time({ timezone: 'Asia/Tokyo' });
+        console.log('Tokyo:');
+        console.log(tokyoTime);
 
-        const nyTime = await client.call.time.get_current_time({ timezone: 'America/New_York' });
-        console.log('  New York:', nyTime);
+        const nyTime = await client.servers.time.get_current_time({ timezone: 'America/New_York' });
+        console.log('New York:');
+        console.log(nyTime);
       }
     }
 
     // Demonstrate error handling
-    console.log('\nError handling example:');
+    console.log('Error handling example:');
     try {
       // Try to call a non-existent tool
-      await client.call.nonexistent_server.nonexistent_tool();
+      await client.servers.nonexistent_server.nonexistent_tool();
     } catch (error) {
       if (error instanceof McpdError) {
-        console.log(`  Caught expected error: ${error.name} - ${error.message}`);
+        console.log(`... Caught expected error: ${error.name} - ${error.message}`);
       } else {
         throw error;
       }
@@ -86,13 +86,11 @@ async function main() {
     } else {
       console.error('Unexpected error:', error);
     }
-    process.exit(1);
+    process.exit(1); 
   }
 }
 
 // Run the example
-if (require.main === module) {
   main().catch(console.error);
-}
 
-module.exports = { main };
+export default { main };
