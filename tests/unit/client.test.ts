@@ -38,7 +38,7 @@ describe("McpdClient", () => {
         apiEndpoint: "http://localhost:8090/",
       });
 
-      clientWithSlash.getServers();
+      clientWithSlash.listServers();
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:8090/api/v1/servers",
@@ -57,7 +57,7 @@ describe("McpdClient", () => {
         apiKey: "test-key",
       });
 
-      clientWithAuth.getServers();
+      clientWithAuth.listServers();
 
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:8090/api/v1/servers",
@@ -77,7 +77,7 @@ describe("McpdClient", () => {
         json: async () => ["time", "fetch", "git"],
       });
 
-      const servers = await client.getServers();
+      const servers = await client.listServers();
 
       expect(servers).toEqual(["time", "fetch", "git"]);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -92,7 +92,7 @@ describe("McpdClient", () => {
         json: async () => [],
       });
 
-      const servers = await client.getServers();
+      const servers = await client.listServers();
 
       expect(servers).toEqual([]);
     });
@@ -100,7 +100,7 @@ describe("McpdClient", () => {
     it("should throw ConnectionError when cannot connect", async () => {
       mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
-      await expect(client.getServers()).rejects.toThrow(ConnectionError);
+      await expect(client.listServers()).rejects.toThrow(ConnectionError);
     });
 
     it("should throw AuthenticationError on 401", async () => {
@@ -118,85 +118,11 @@ describe("McpdClient", () => {
         text: async () => JSON.stringify(errorModel),
       });
 
-      await expect(client.getServers()).rejects.toThrow(AuthenticationError);
+      await expect(client.listServers()).rejects.toThrow(AuthenticationError);
     });
   });
 
-  describe("tools()", () => {
-    it("should return tools for all servers", async () => {
-      const mockTools = {
-        time: [{ name: "get_current_time", description: "Get current time" }],
-        fetch: [{ name: "fetch_url", description: "Fetch URL content" }],
-      };
-
-      // First call: getServers()
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ["time", "fetch"],
-      });
-
-      // Second call: tools for 'time'
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ tools: mockTools.time }),
-      });
-
-      // Third call: tools for 'fetch'
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ tools: mockTools.fetch }),
-      });
-
-      const tools = await client.getTools();
-
-      expect(tools).toEqual(mockTools);
-    });
-
-    it("should return tools for specific server", async () => {
-      const timeTools = [
-        { name: "get_current_time", description: "Get current time" },
-      ];
-
-      // First call for health check
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          name: "time",
-          status: "ok",
-          latency: "2ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
-        }),
-      });
-
-      // Second call for tools
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ tools: timeTools }),
-      });
-
-      const tools = await client.getTools("time");
-
-      expect(tools).toEqual(timeTools);
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8090/api/v1/servers/time/tools",
-        expect.any(Object),
-      );
-    });
-
-    it("should throw ServerNotFoundError for non-existent server", async () => {
-      // Health check returns not found
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: async () => "Server not found",
-      });
-
-      await expect(client.getTools("nonexistent")).rejects.toThrow(Error);
-    });
-  });
-
-  describe("serverHealth()", () => {
+  describe("getServerHealth()", () => {
     it("should return health for all servers", async () => {
       const mockApiResponse = {
         $schema: "http://localhost:8090/schemas/ServersHealthResponseBody.json",
@@ -364,19 +290,41 @@ describe("McpdClient", () => {
         ],
       };
 
-      // First call: getServers()
+      // First call: listServers()
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ["time", "math"],
       });
 
-      // Second call: tools for 'time'
+      // Second call: health check for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Third call: tools for 'time'
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockAllTools.time }),
       });
 
-      // Third call: tools for 'math'
+      // Fourth call: health check for 'math'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "1ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Fifth call: tools for 'math'
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockAllTools.math }),
@@ -402,7 +350,7 @@ describe("McpdClient", () => {
     });
 
     it("should return empty array when no tools available", async () => {
-      // First call: getServers() returns empty array
+      // First call: listServers() returns empty array
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [],

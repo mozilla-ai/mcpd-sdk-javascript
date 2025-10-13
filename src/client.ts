@@ -58,7 +58,7 @@ import { API_PATHS } from "./apiPaths";
  * });
  *
  * // List available servers
- * const servers = await client.getServers();
+ * const servers = await client.listServers();
  * console.log(servers); // ['time', 'fetch', 'git']
  *
  * // Invoke a tool dynamically
@@ -107,7 +107,7 @@ export class McpdClient {
     // Initialize servers namespace and function builder with injected functions
     this.servers = new ServersNamespace(
       this.#performCall.bind(this),
-      this.getTools.bind(this),
+      this.#getToolsByServer.bind(this),
     );
     this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
@@ -240,79 +240,39 @@ export class McpdClient {
    *
    * @example
    * ```typescript
-   * const servers = await client.getServers();
+   * const servers = await client.listServers();
    * console.log(servers); // ['time', 'fetch', 'git']
    * ```
    */
-  async getServers(): Promise<string[]> {
+  async listServers(): Promise<string[]> {
     return await this.#request<string[]>(API_PATHS.SERVERS);
   }
 
   /**
-   * Get tool schemas for one or all servers.
+   * Internal method to get tool schemas for a server.
+   * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
-   * @param serverName - Optional server name to get tools for
-   * @returns Tool schemas, either as an array (single server) or object (all servers)
+   * @param serverName - Server name to get tools for
+   * @returns Tool schemas for the specified server
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {McpdError} If the request fails
-   *
-   * @example
-   * ```typescript
-   * // Get tools for all servers
-   * const allTools = await client.getTools();
-   * console.log(allTools); // { time: [...], fetch: [...] }
-   *
-   * // Get tools for a specific server
-   * const timeTools = await client.getTools('time');
-   * console.log(timeTools); // [{ name: 'get_current_time', ... }]
-   * ```
+   * @internal
    */
-  async getTools(): Promise<Record<string, ToolSchema[]>>;
-  async getTools(serverName: string): Promise<ToolSchema[]>;
-  async getTools(
-    serverName?: string,
-  ): Promise<ToolSchema[] | Record<string, ToolSchema[]>> {
-    if (serverName) {
-      // Check server health first
-      await this.#ensureServerHealthy(serverName);
+  async #getToolsByServer(serverName: string): Promise<ToolSchema[]> {
+    // Check server health first
+    await this.#ensureServerHealthy(serverName);
 
-      const path = API_PATHS.SERVER_TOOLS(serverName);
-      const response = await this.#request<ToolsResponse>(path);
+    const path = API_PATHS.SERVER_TOOLS(serverName);
+    const response = await this.#request<ToolsResponse>(path);
 
-      if (!response.tools) {
-        throw new ServerNotFoundError(
-          `Server '${serverName}' not found`,
-          serverName,
-        );
-      }
-
-      return response.tools;
-    } else {
-      // No global tools endpoint - get tools from each server individually (matching Python SDK)
-      const servers = await this.getServers();
-
-      const toolsPromises = servers.map(async (server) => {
-        try {
-          const path = API_PATHS.SERVER_TOOLS(server);
-          const response = await this.#request<ToolsResponse>(path);
-          return { server, tools: response.tools || [] };
-        } catch (error) {
-          // If we can't get tools for a server, return empty array
-          console.warn(`Failed to get tools for server '${server}':`, error);
-          return { server, tools: [] };
-        }
-      });
-
-      const results = await Promise.all(toolsPromises);
-
-      return results.reduce(
-        (acc, { server, tools }) => {
-          acc[server] = tools;
-          return acc;
-        },
-        {} as Record<string, ToolSchema[]>,
+    if (!response.tools) {
+      throw new ServerNotFoundError(
+        `Server '${serverName}' not found`,
+        serverName,
       );
     }
+
+    return response.tools;
   }
 
   /**
@@ -326,17 +286,17 @@ export class McpdClient {
    * @example
    * ```typescript
    * // Get health for all servers
-   * const allHealth = await client.serverHealth();
+   * const allHealth = await client.getServerHealth();
    * console.log(allHealth); // { time: { status: 'ok' }, fetch: { status: 'ok' } }
    *
    * // Get health for a specific server
-   * const timeHealth = await client.serverHealth('time');
+   * const timeHealth = await client.getServerHealth('time');
    * console.log(timeHealth); // { status: 'ok' }
    * ```
    */
-  async serverHealth(): Promise<Record<string, ServerHealth>>;
-  async serverHealth(serverName: string): Promise<ServerHealth>;
-  async serverHealth(
+  async getServerHealth(): Promise<Record<string, ServerHealth>>;
+  async getServerHealth(serverName: string): Promise<ServerHealth>;
+  async getServerHealth(
     serverName?: string,
   ): Promise<ServerHealth | Record<string, ServerHealth>> {
     if (serverName) {
@@ -386,37 +346,6 @@ export class McpdClient {
   }
 
   /**
-   * Get health information for one or all servers (JavaScript naming convention).
-   *
-   * @param serverName - Optional server name to get health for
-   * @returns Health information for the specified server or all servers
-   * @throws {ServerNotFoundError} If the specified server doesn't exist
-   * @throws {McpdError} If the request fails
-   *
-   * @example
-   * ```typescript
-   * // Get health for all servers
-   * const allHealth = await client.getServerHealth();
-   * console.log(allHealth); // { time: { status: 'ok' }, fetch: { status: 'ok' } }
-   *
-   * // Get health for a specific server
-   * const timeHealth = await client.getServerHealth('time');
-   * console.log(timeHealth); // { status: 'ok' }
-   * ```
-   */
-  async getServerHealth(): Promise<Record<string, ServerHealth>>;
-  async getServerHealth(serverName: string): Promise<ServerHealth>;
-  async getServerHealth(
-    serverName?: string,
-  ): Promise<ServerHealth | Record<string, ServerHealth>> {
-    if (serverName !== undefined) {
-      return this.serverHealth(serverName);
-    } else {
-      return this.serverHealth();
-    }
-  }
-
-  /**
    * Check if a specific server is healthy.
    *
    * @param serverName - The name of the server to check
@@ -431,7 +360,7 @@ export class McpdClient {
    */
   async isServerHealthy(serverName: string): Promise<boolean> {
     try {
-      const health = await this.serverHealth(serverName);
+      const health = await this.getServerHealth(serverName);
       return HealthStatusHelpers.isHealthy(health.status);
     } catch (error) {
       if (error instanceof ServerNotFoundError) {
@@ -449,7 +378,7 @@ export class McpdClient {
    * @throws {ServerUnhealthyError} If the server is not healthy
    */
   async #ensureServerHealthy(serverName: string): Promise<void> {
-    const health = await this.serverHealth(serverName);
+    const health = await this.getServerHealth(serverName);
 
     if (!health) {
       throw new ServerNotFoundError(
@@ -561,11 +490,23 @@ export class McpdClient {
       // Fetch tools only from specified servers
       toolsByServer = {};
       for (const serverName of servers) {
-        toolsByServer[serverName] = await this.getTools(serverName);
+        toolsByServer[serverName] = await this.#getToolsByServer(serverName);
       }
     } else {
       // Fetch tools from all servers
-      toolsByServer = await this.getTools();
+      const allServers = await this.listServers();
+      toolsByServer = {};
+      for (const serverName of allServers) {
+        try {
+          toolsByServer[serverName] = await this.#getToolsByServer(serverName);
+        } catch (error) {
+          // If we can't get tools for a server, skip it
+          console.warn(
+            `Failed to get tools for server '${serverName}':`,
+            error,
+          );
+        }
+      }
     }
 
     // Build functions from tool schemas

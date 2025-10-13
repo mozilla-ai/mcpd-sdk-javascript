@@ -42,12 +42,12 @@ const client = new McpdClient({
 });
 
 // List available servers
-const servers = await client.getServers();
+const servers = await client.listServers();
 console.log(servers);
 // Example: ['time', 'fetch', 'git']
 
 // List tool definitions for a specific server
-const tools = await client.getTools("time");
+const tools = await client.servers.time.listTools();
 console.log(tools);
 
 // Dynamically call a tool via the .tools namespace
@@ -76,10 +76,10 @@ const client = new McpdClient({
 });
 
 // Full type safety and autocomplete
-const servers: string[] = await client.getServers();
+const servers: string[] = await client.listServers();
 
 // Get tools with proper typing
-const tools: ToolSchema[] = await client.getTools("time");
+const tools: ToolSchema[] = await client.servers.time.listTools();
 
 // Dynamic tool invocation with error handling via .tools namespace
 try {
@@ -113,26 +113,22 @@ const client = new McpdClient({
 
 ### Core Methods
 
-#### `client.getServers()`
+#### `client.listServers()`
 
 Returns a list of all configured server names.
 
 ```typescript
-const servers = await client.getServers();
+const servers = await client.listServers();
 // Returns: ['time', 'fetch', 'git']
 ```
 
-#### `client.getTools(serverName?: string)`
+#### `client.servers.<server>.listTools()`
 
-Returns tool schemas for one or all servers.
+Returns tool schemas for a specific server.
 
 ```typescript
-// Get tools for all servers
-const allTools = await client.getTools();
-// Returns: { time: [...], fetch: [...], git: [...] }
-
-// Get tools for specific server
-const timeTools = await client.getTools("time");
+// Get tools for a specific server
+const timeTools = await client.servers.time.listTools();
 // Returns: [{ name: 'get_current_time', description: '...', inputSchema: {...} }]
 ```
 
@@ -170,7 +166,7 @@ for (const tool of tools) {
 }
 
 // Useful in loops with dynamic server names
-const servers = await client.getServers();
+const servers = await client.listServers();
 for (const serverName of servers) {
   const tools = await client.servers[serverName].listTools();
   console.log(`${serverName}: ${tools.length} tools`);

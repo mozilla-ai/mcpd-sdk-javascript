@@ -21,7 +21,7 @@ async function main() {
   try {
     // List all available servers
     console.log('Available servers:');
-    const servers = await client.getServers();
+    const servers = await client.listServers();
     console.log(servers);
 
     // Get health status for all servers
@@ -35,7 +35,7 @@ async function main() {
     if (servers.includes('time')) {
       // Get tools for the time server
       console.log('Time server tools:');
-      const tools = await client.getTools('time');
+      const tools = await client.servers.time.listTools();
       for (const tool of tools) {
         console.log(`  - ${tool.name}: ${tool.description || 'No description'}`);
       }
