@@ -1,32 +1,16 @@
 /**
  * Dynamic tool invocation for mcpd client.
  *
- * This module provides the ServersNamespace and ServerProxy classes
+ * This module provides the ServersNamespace, ServerProxy, and ToolsProxy classes
  * that enable natural JavaScript syntax for calling MCP tools, such as:
- *     client.servers.time.get_current_time(args)
+ *     client.servers.time.tools.get_current_time(args)
  *
  * The dynamic calling system uses JavaScript's Proxy to create
  * a fluent interface that resolves server and tool names at runtime.
  */
 
-import { ToolNotFoundError } from './errors';
-import type { McpdClient } from './client';
-
-/**
- * Convert a camelCase string to snake_case.
- *
- * @param str - The camelCase string to convert
- * @returns The snake_case version of the string
- *
- * @example
- * ```typescript
- * camelToSnake('getCurrentTime') // 'get_current_time'
- * camelToSnake('someToolName') // 'some_tool_name'
- * ```
- */
-function camelToSnake(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
+import { ToolNotFoundError } from "./errors";
+import type { ToolSchema, PerformCallFn, GetToolsFn } from "./types";
 
 /**
  * Namespace for accessing MCP servers via proxy.
@@ -39,141 +23,272 @@ function camelToSnake(str: string): string {
  * const client = new McpdClient({ apiEndpoint: 'http://localhost:8090' });
  *
  * // Access tools through the servers namespace
- * const result = await client.servers.time.get_current_time({ timezone: "UTC" });
+ * const result = await client.servers.time.tools.get_current_time({ timezone: "UTC" });
  *
  * // Check if a tool exists
- * if (await client.servers.time.hasTool("get_current_time")) {
+ * if (await client.servers.time.tools.hasTool("get_current_time")) {
  *   // ...
  * }
  * ```
  */
 export class ServersNamespace {
-  #client: McpdClient;
+  #performCall: PerformCallFn;
+  #getTools: GetToolsFn;
 
   /**
-   * Initialize the ServersNamespace with a reference to the client.
+   * Initialize the ServersNamespace with injected functions.
    *
-   * @param client - The McpdClient instance that owns this ServersNamespace
+   * @param performCall - Function to execute tool calls
+   * @param getTools - Function to get tool schemas
    */
-  constructor(client: McpdClient) {
-    this.#client = client;
+  constructor(performCall: PerformCallFn, getTools: GetToolsFn) {
+    this.#performCall = performCall;
+    this.#getTools = getTools;
 
     // Return a Proxy to intercept property access
     return new Proxy(this, {
       get: (target, serverName: string | symbol) => {
-        if (typeof serverName !== 'string') {
+        if (typeof serverName !== "string") {
           return undefined;
         }
-        return new ServerProxy(target.#client, serverName);
+        return new ServerProxy(
+          target.#performCall,
+          target.#getTools,
+          serverName,
+        );
       },
     });
   }
 }
 
 /**
- * Proxy for a specific MCP server, enabling tool invocation via properties.
+ * Proxy for a specific MCP server, enabling tool access and server operations.
  *
- * This class represents a specific MCP server and allows calling its tools
- * as if they were methods. Supports both snake_case and camelCase naming.
+ * This class represents a specific MCP server and provides access to its tools
+ * through the `.tools` namespace, as well as server-level operations like listing tools.
  *
  * @example
  * ```typescript
  * // ServerProxy is created when you access a server:
- * const timeServer = client.servers.time; // Returns ServerProxy(client, "time")
+ * const timeServer = client.servers.time; // Returns ServerProxy(...)
  *
- * // Check if a tool exists (supports both naming styles):
- * await timeServer.hasTool('get_current_time')  // true
- * await timeServer.hasTool('getCurrentTime')    // true
+ * // List available tools
+ * const tools = await timeServer.listTools();
  *
- * // Call tools (supports both naming styles):
- * await timeServer.get_current_time({ timezone: "UTC" })
- * await timeServer.getCurrentTime({ timezone: "UTC" })
+ * // Call tools through the .tools namespace:
+ * await timeServer.tools.get_current_time({ timezone: "UTC" })
  * ```
  */
 export class ServerProxy {
-  #client: McpdClient;
+  #performCall: PerformCallFn;
+  #getTools: GetToolsFn;
   #serverName: string;
 
   /**
    * Initialize a ServerProxy for a specific server.
    *
-   * @param client - The McpdClient instance to use for API calls
+   * @param performCall - Function to execute tool calls
+   * @param getTools - Function to get tool schemas
    * @param serverName - The name of the MCP server this proxy represents
    */
-  constructor(client: McpdClient, serverName: string) {
-    this.#client = client;
+  constructor(
+    performCall: PerformCallFn,
+    getTools: GetToolsFn,
+    serverName: string,
+  ) {
+    this.#performCall = performCall;
+    this.#getTools = getTools;
+    this.#serverName = serverName;
+
+    // Return a Proxy to intercept property access
+    return new Proxy(this, {
+      get: (target, prop: string | symbol) => {
+        if (typeof prop !== "string") {
+          return undefined;
+        }
+
+        // Expose listTools method
+        if (prop === "listTools") {
+          return target.listTools.bind(target);
+        }
+
+        // Expose tools namespace
+        if (prop === "tools") {
+          return new ToolsProxy(
+            target.#performCall,
+            target.#getTools,
+            target.#serverName,
+          );
+        }
+
+        // Unknown property
+        return undefined;
+      },
+    });
+  }
+
+  /**
+   * List all tools available on this server.
+   *
+   * @returns Array of tool schemas
+   * @throws {ServerNotFoundError} If the server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is unhealthy
+   *
+   * @example
+   * ```typescript
+   * const tools = await client.servers.time.listTools();
+   * for (const tool of tools) {
+   *   console.log(`${tool.name}: ${tool.description}`);
+   * }
+   * ```
+   */
+  async listTools(): Promise<ToolSchema[]> {
+    return this.#getTools(this.#serverName);
+  }
+}
+
+/**
+ * Proxy for accessing tools on a specific MCP server.
+ *
+ * This class provides the `.tools` namespace for a server, allowing you to call
+ * tools as if they were methods. All tool names must match exactly as returned
+ * by the MCP server.
+ *
+ * @example
+ * ```typescript
+ * // Access via .tools namespace
+ * const result = await client.servers.time.tools.get_current_time({ timezone: "UTC" });
+ *
+ * // Use callTool for dynamic tool names
+ * const toolName = "get_current_time";
+ * const result = await client.servers.time.tools.callTool(toolName, { timezone: "UTC" });
+ *
+ * // Check if a tool exists
+ * if (await client.servers.time.tools.hasTool("get_current_time")) {
+ *   // ...
+ * }
+ * ```
+ */
+export class ToolsProxy {
+  #performCall: PerformCallFn;
+  #getTools: GetToolsFn;
+  #serverName: string;
+
+  /**
+   * Initialize a ToolsProxy for a specific server.
+   *
+   * @param performCall - Function to execute tool calls
+   * @param getTools - Function to get tool schemas
+   * @param serverName - The name of the MCP server
+   */
+  constructor(
+    performCall: PerformCallFn,
+    getTools: GetToolsFn,
+    serverName: string,
+  ) {
+    this.#performCall = performCall;
+    this.#getTools = getTools;
     this.#serverName = serverName;
 
     // Return a Proxy to intercept method calls
     return new Proxy(this, {
       get: (target, prop: string | symbol) => {
-        if (typeof prop !== 'string') {
+        if (typeof prop !== "string") {
           return undefined;
         }
 
         // Expose hasTool method
-        if (prop === 'hasTool') {
+        if (prop === "hasTool") {
           return target.hasTool.bind(target);
         }
 
-        // Return a function that will call the tool
+        // Expose callTool method
+        if (prop === "callTool") {
+          return target.callTool.bind(target);
+        }
+
+        // Return a function that will call the tool with exact name matching
         return async (args?: Record<string, unknown>) => {
-          // Try exact match first, then try snake_case conversion
           const toolName = prop;
-          const snakeCaseName = camelToSnake(prop);
 
-          // Check if the tool exists (try both names)
-          const tools = await target.#client.getTools(target.#serverName);
-          const exactMatch = tools.find(t => t.name === toolName);
-          const snakeMatch = tools.find(t => t.name === snakeCaseName);
+          // Check if the tool exists (exact match only)
+          const tools = await target.#getTools(target.#serverName);
+          const tool = tools.find((t) => t.name === toolName);
 
-          const actualToolName = exactMatch ? toolName : snakeMatch ? snakeCaseName : null;
-
-          if (!actualToolName) {
+          if (!tool) {
             throw new ToolNotFoundError(
               `Tool '${toolName}' not found on server '${target.#serverName}'. ` +
-                `Use client.getTools('${target.#serverName}') to see available tools.`,
+                `Use client.servers.${target.#serverName}.listTools() to see available tools.`,
               target.#serverName,
-              toolName
+              toolName,
             );
           }
 
-          // Perform the tool call with the actual tool name
-          return target.#client._performCall(target.#serverName, actualToolName, args);
+          // Perform the tool call
+          return target.#performCall(target.#serverName, toolName, args);
         };
       },
     });
   }
 
   /**
+   * Call a tool by name with the given arguments.
+   *
+   * This method is useful for programmatic tool invocation when the tool name
+   * is in a variable. The tool name must match exactly as returned by the server.
+   *
+   * @param toolName - The exact name of the tool to call
+   * @param args - The arguments to pass to the tool
+   * @returns The tool's response
+   * @throws {ToolNotFoundError} If the tool doesn't exist on the server
+   *
+   * @example
+   * ```typescript
+   * // Call with explicit method (useful for dynamic tool names):
+   * const toolName = 'get_current_time';
+   * await client.servers.time.tools.callTool(toolName, { timezone: 'UTC' });
+   * ```
+   */
+  async callTool(
+    toolName: string,
+    args?: Record<string, unknown>,
+  ): Promise<unknown> {
+    // Check if the tool exists (exact match only)
+    const tools = await this.#getTools(this.#serverName);
+    const tool = tools.find((t) => t.name === toolName);
+
+    if (!tool) {
+      throw new ToolNotFoundError(
+        `Tool '${toolName}' not found on server '${this.#serverName}'. ` +
+          `Use client.servers.${this.#serverName}.listTools() to see available tools.`,
+        this.#serverName,
+        toolName,
+      );
+    }
+
+    // Perform the tool call
+    return this.#performCall(this.#serverName, toolName, args);
+  }
+
+  /**
    * Check if a tool exists on this server.
    *
-   * Supports both snake_case and camelCase naming.
+   * The tool name must match exactly as returned by the server.
    *
-   * @param toolName - The name of the tool to check (supports both snake_case and camelCase)
+   * @param toolName - The exact name of the tool to check
    * @returns True if the tool exists, false otherwise
    *
    * @example
    * ```typescript
-   * const timeServer = client.getServer('time');
-   *
-   * // Both naming styles work:
-   * await timeServer.hasTool('get_current_time')  // true
-   * await timeServer.hasTool('getCurrentTime')    // true
+   * if (await client.servers.time.tools.hasTool('get_current_time')) {
+   *   const result = await client.servers.time.tools.get_current_time({ timezone: 'UTC' });
+   * }
    * ```
    */
   async hasTool(toolName: string): Promise<boolean> {
     try {
-      const tools = await this.#client.getTools(this.#serverName);
-
-      // Try exact match first
-      if (tools.some(t => t.name === toolName)) {
-        return true;
-      }
-
-      // Try snake_case conversion
-      const snakeCaseName = camelToSnake(toolName);
-      return tools.some(t => t.name === snakeCaseName);
+      const tools = await this.#getTools(this.#serverName);
+      return tools.some((t) => t.name === toolName);
     } catch {
       return false;
     }

@@ -6,10 +6,10 @@
  * Enumeration of possible MCP server health statuses.
  */
 export enum HealthStatus {
-  OK = 'ok',
-  TIMEOUT = 'timeout',
-  UNREACHABLE = 'unreachable',
-  UNKNOWN = 'unknown',
+  OK = "ok",
+  TIMEOUT = "timeout",
+  UNREACHABLE = "unreachable",
+  UNKNOWN = "unknown",
 }
 
 /**
@@ -138,3 +138,44 @@ export interface McpdClientOptions {
    */
   timeout?: number;
 }
+
+/**
+ * Tool format types for cross-framework compatibility.
+ */
+export type ToolFormat = "array" | "object" | "map";
+
+/**
+ * Options for generating agent tools.
+ */
+export interface AgentToolsOptions {
+  /**
+   * Optional list of server names to include. If not specified, includes all servers.
+   */
+  servers?: string[];
+
+  /**
+   * Output format for the tools.
+   * - 'array': Returns array of functions (default, for LangChain)
+   * - 'object': Returns object keyed by tool name (for Vercel AI SDK)
+   * - 'map': Returns Map keyed by tool name
+   */
+  format?: ToolFormat;
+}
+
+/**
+ * Function signature for performing tool calls.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type PerformCallFn = (
+  serverName: string,
+  toolName: string,
+  args?: Record<string, unknown>,
+) => Promise<unknown>;
+
+/**
+ * Function signature for getting tools from a server.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type GetToolsFn = (serverName: string) => Promise<ToolSchema[]>;

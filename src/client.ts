@@ -10,7 +10,7 @@
  * interface for working with multiple MCP servers through the mcpd daemon.
  */
 
-import { LRUCache } from 'lru-cache';
+import { LRUCache } from "lru-cache";
 import {
   McpdError,
   ConnectionError,
@@ -19,7 +19,7 @@ import {
   ServerUnhealthyError,
   ToolExecutionError,
   TimeoutError,
-} from './errors';
+} from "./errors";
 import {
   HealthStatusHelpers,
   McpdClientOptions,
@@ -28,16 +28,12 @@ import {
   ToolsResponse,
   HealthResponse,
   ErrorModel,
-} from './types';
-import { createCache } from './utils/cache';
-import { ServersNamespace, ServerProxy } from './dynamicCaller';
-import { FunctionBuilder, type AgentFunction } from './functionBuilder';
-import { API_PATHS } from './apiPaths';
-
-/**
- * Tool format types for cross-framework compatibility.
- */
-export type ToolFormat = 'array' | 'object' | 'map';
+  AgentToolsOptions,
+} from "./types";
+import { createCache } from "./utils/cache";
+import { ServersNamespace } from "./dynamicCaller";
+import { FunctionBuilder, type AgentFunction } from "./functionBuilder";
+import { API_PATHS } from "./apiPaths";
 
 /**
  * Client for interacting with MCP (Model Context Protocol) servers through an mcpd daemon.
@@ -94,66 +90,51 @@ export class McpdClient {
    */
   constructor(options: McpdClientOptions) {
     // Remove trailing slash from endpoint
-    this.#endpoint = options.apiEndpoint.replace(/\/$/, '');
+    this.#endpoint = options.apiEndpoint.replace(/\/$/, "");
     this.#apiKey = options.apiKey;
     this.#timeout = options.timeout ?? 30000;
 
     // Setup health cache
     const healthCacheTtlMs = (options.healthCacheTtl ?? 10) * 1000; // Convert to milliseconds
     this.#serverHealthCache = createCache({
-      max: 100,
+      max: 100, // TODO: Extract to const like Python SDK see:
+      //  _SERVER_HEALTH_CACHE_MAXSIZE: int = 100
+      // """Maximum number of server health entries to cache.
+      // Prevents unbounded memory growth while allowing legitimate large-scale monitoring."""
       ttl: healthCacheTtlMs,
     });
 
-    // Initialize servers namespace and function builder
-    this.servers = new ServersNamespace(this);
-    this.#functionBuilder = new FunctionBuilder(this);
-  }
-
-  /**
-   * Get a ServerProxy for a specific server.
-   *
-   * @param serverName - The name of the server
-   * @returns A ServerProxy instance for the specified server
-   *
-   * @example
-   * ```typescript
-   * const timeServer = client.getServer('time');
-   * if (await timeServer.hasTool('get_current_time')) {
-   *   const result = await timeServer.get_current_time({ timezone: 'UTC' });
-   * }
-   *
-   * // Useful in loops
-   * for (const name of await client.getServers()) {
-   *   const server = client.getServer(name);
-   *   // ...
-   * }
-   * ```
-   */
-  getServer(serverName: string): ServerProxy {
-    return new ServerProxy(this, serverName);
+    // Initialize servers namespace and function builder with injected functions
+    this.servers = new ServersNamespace(
+      this.#performCall.bind(this),
+      this.getTools.bind(this),
+    );
+    this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
 
   /**
    * Make an HTTP request to the mcpd daemon.
    *
-   * @param path - The API path (e.g., '/servers', '/tools')
+   * @param path - The API path (e.g., '/servers', '/servers/{server_name}/tools')
    * @param options - Request options
    * @returns The JSON response from the daemon
    * @throws {McpdError} If the request fails
    */
-  async #request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  async #request<T = unknown>(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<T> {
     const url = `${this.#endpoint}${path}`;
 
     // Setup request headers
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
     };
 
     // Add authentication if configured
     if (this.#apiKey) {
-      headers['Authorization'] = `Bearer ${this.#apiKey}`;
+      headers["Authorization"] = `Bearer ${this.#apiKey}`;
     }
 
     // Setup timeout
@@ -178,10 +159,13 @@ export class McpdClient {
           errorModel = JSON.parse(body) as ErrorModel;
         } catch {
           // Not JSON, use text as detail
+          // TODO: This stinks do something in here.
         }
 
         if (errorModel && errorModel.detail) {
-          const errorDetails = errorModel.errors?.map(e => `${e.location}: ${e.message}`).join('; ');
+          const errorDetails = errorModel.errors
+            ?.map((e) => `${e.location}: ${e.message}`)
+            .join("; ");
           const fullMessage = errorDetails
             ? `${errorModel.detail} - ${errorDetails}`
             : errorModel.detail;
@@ -193,41 +177,45 @@ export class McpdClient {
 
           // Handle other errors with proper message
           throw new McpdError(
-            `${errorModel.title || 'Request failed'}: ${fullMessage}`
+            `${errorModel.title || "Request failed"}: ${fullMessage}`,
           );
         }
 
         // Fallback if ErrorModel parsing failed
         if (response.status === 401 || response.status === 403) {
           throw new AuthenticationError(
-            `Authentication failed: ${response.status} ${response.statusText}`
+            `Authentication failed: ${response.status} ${response.statusText}`,
           );
         }
 
         throw new McpdError(
-          `Request failed: ${response.status} ${response.statusText} - ${body}`
+          `Request failed: ${response.status} ${response.statusText} - ${body}`,
         );
       }
 
       // Parse JSON response
       try {
-        return await response.json() as T;
+        return (await response.json()) as T;
       } catch (error) {
-        throw new McpdError('Failed to parse JSON response', error as Error);
+        throw new McpdError("Failed to parse JSON response", error as Error);
       }
     } catch (error) {
       clearTimeout(timeoutId);
 
       // Handle timeout
-      if ((error as Error).name === 'AbortError') {
-        throw new TimeoutError(`Request timed out after ${this.#timeout}ms`, path, this.#timeout);
+      if ((error as Error).name === "AbortError") {
+        throw new TimeoutError(
+          `Request timed out after ${this.#timeout}ms`,
+          path,
+          this.#timeout,
+        );
       }
 
       // Handle connection errors
-      if (error instanceof TypeError && error.message.includes('fetch')) {
+      if (error instanceof TypeError && error.message.includes("fetch")) {
         throw new ConnectionError(
           `Cannot connect to mcpd daemon at ${this.#endpoint}. Is it running?`,
-          error
+          error,
         );
       }
 
@@ -237,7 +225,10 @@ export class McpdClient {
       }
 
       // Wrap unknown errors
-      throw new McpdError(`Request failed: ${(error as Error).message}`, error as Error);
+      throw new McpdError(
+        `Request failed: ${(error as Error).message}`,
+        error as Error,
+      );
     }
   }
 
@@ -278,7 +269,9 @@ export class McpdClient {
    */
   async getTools(): Promise<Record<string, ToolSchema[]>>;
   async getTools(serverName: string): Promise<ToolSchema[]>;
-  async getTools(serverName?: string): Promise<ToolSchema[] | Record<string, ToolSchema[]>> {
+  async getTools(
+    serverName?: string,
+  ): Promise<ToolSchema[] | Record<string, ToolSchema[]>> {
     if (serverName) {
       // Check server health first
       await this.#ensureServerHealthy(serverName);
@@ -287,7 +280,10 @@ export class McpdClient {
       const response = await this.#request<ToolsResponse>(path);
 
       if (!response.tools) {
-        throw new ServerNotFoundError(`Server '${serverName}' not found`, serverName);
+        throw new ServerNotFoundError(
+          `Server '${serverName}' not found`,
+          serverName,
+        );
       }
 
       return response.tools;
@@ -309,10 +305,13 @@ export class McpdClient {
 
       const results = await Promise.all(toolsPromises);
 
-      return results.reduce((acc, { server, tools }) => {
-        acc[server] = tools;
-        return acc;
-      }, {} as Record<string, ToolSchema[]>);
+      return results.reduce(
+        (acc, { server, tools }) => {
+          acc[server] = tools;
+          return acc;
+        },
+        {} as Record<string, ToolSchema[]>,
+      );
     }
   }
 
@@ -337,7 +336,9 @@ export class McpdClient {
    */
   async serverHealth(): Promise<Record<string, ServerHealth>>;
   async serverHealth(serverName: string): Promise<ServerHealth>;
-  async serverHealth(serverName?: string): Promise<ServerHealth | Record<string, ServerHealth>> {
+  async serverHealth(
+    serverName?: string,
+  ): Promise<ServerHealth | Record<string, ServerHealth>> {
     if (serverName) {
       // Check cache first
       const cacheKey = `health:${serverName}`;
@@ -371,7 +372,9 @@ export class McpdClient {
         throw error;
       }
     } else {
-      const response = await this.#request<HealthResponse>(API_PATHS.HEALTH_ALL);
+      const response = await this.#request<HealthResponse>(
+        API_PATHS.HEALTH_ALL,
+      );
       // Transform array response into Record<string, ServerHealth>
       const healthMap: Record<string, ServerHealth> = {};
       for (const server of response.servers) {
@@ -403,7 +406,9 @@ export class McpdClient {
    */
   async getServerHealth(): Promise<Record<string, ServerHealth>>;
   async getServerHealth(serverName: string): Promise<ServerHealth>;
-  async getServerHealth(serverName?: string): Promise<ServerHealth | Record<string, ServerHealth>> {
+  async getServerHealth(
+    serverName?: string,
+  ): Promise<ServerHealth | Record<string, ServerHealth>> {
     if (serverName !== undefined) {
       return this.serverHealth(serverName);
     } else {
@@ -447,46 +452,53 @@ export class McpdClient {
     const health = await this.serverHealth(serverName);
 
     if (!health) {
-      throw new ServerNotFoundError(`Server '${serverName}' not found`, serverName);
+      throw new ServerNotFoundError(
+        `Server '${serverName}' not found`,
+        serverName,
+      );
     }
 
     if (!HealthStatusHelpers.isHealthy(health.status)) {
       throw new ServerUnhealthyError(
         `Server '${serverName}' is not healthy: ${health.status}`,
         serverName,
-        health.status
+        health.status,
       );
     }
   }
 
   /**
-   * Perform a tool call on a server.
+   * Internal method to perform a tool call on a server.
    *
-   * This method is used internally by the dynamic caller and agent tools.
-   * Users should typically use the dynamic caller syntax instead.
+   * ⚠️ This method is truly private and cannot be accessed by SDK consumers.
+   * Use the fluent API instead: `client.servers.foo.tools.bar(args)`
+   *
+   * This method is used internally by:
+   * - ToolsProxy (via dependency injection)
+   * - FunctionBuilder (via dependency injection)
    *
    * @param serverName - The name of the server
-   * @param toolName - The name of the tool
+   * @param toolName - The exact name of the tool
    * @param args - The tool arguments
    * @returns The tool's response
    * @throws {ToolExecutionError} If the tool execution fails
    * @internal
    */
-  async _performCall(
+  async #performCall(
     serverName: string,
     toolName: string,
-    args?: Record<string, unknown>
+    args?: Record<string, unknown>,
   ): Promise<unknown> {
     const path = API_PATHS.TOOL_CALL(serverName, toolName);
 
     try {
       const response = await this.#request<unknown>(path, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(args || {}),
       });
 
       // The mcpd API returns tool results as JSON strings that need parsing
-      if (typeof response === 'string') {
+      if (typeof response === "string") {
         try {
           return JSON.parse(response);
         } catch {
@@ -509,7 +521,7 @@ export class McpdClient {
         serverName,
         toolName,
         undefined,
-        error as Error
+        error as Error,
       );
     }
   }
@@ -523,15 +535,13 @@ export class McpdClient {
   }
 
   /**
-   * Generate callable functions for use with AI agent frameworks.
+   * Generate callable functions for use with AI agent frameworks (internal).
    *
-   * This method queries all servers via `tools()` and creates self-contained,
+   * This method queries servers via `getTools()` and creates self-contained,
    * callable functions that can be passed to AI agent frameworks. Each function
    * includes its schema as metadata and handles the MCP communication internally.
    *
-   * The generated functions are cached for performance. Use clearAgentToolsCache()
-   * to force regeneration if servers or tools have changed.
-   *
+   * @param servers - Optional list of server names to include. If not specified, includes all servers.
    * @returns Array of callable functions with metadata
    *
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
@@ -539,32 +549,32 @@ export class McpdClient {
    * @throws {AuthenticationError} If API key authentication fails
    * @throws {ServerNotFoundError} If a server becomes unavailable during tool retrieval
    * @throws {McpdError} If unable to retrieve tool definitions or generate functions
-   *
-   * @example
-   * ```typescript
-   * const tools = await client.agentTools();
-   * console.log(`Generated ${tools.length} callable tools`);
-   *
-   * // Each function has metadata
-   * for (const tool of tools) {
-   *   console.log(`${tool.name}: ${tool.description}`);
-   * }
-   *
-   * // Use with an AI agent framework
-   * const agent = new Agent({
-   *   tools: tools,
-   *   model: 'gpt-4',
-   *   instructions: 'Help the user with their tasks.'
-   * });
-   * ```
+   * @internal
    */
-  async agentTools(): Promise<AgentFunction[]> {
+  async agentTools(servers?: string[]): Promise<AgentFunction[]> {
     const agentTools: AgentFunction[] = [];
-    const allTools = await this.getTools();
 
-    for (const [serverName, toolSchemas] of Object.entries(allTools)) {
+    // Get tools from all servers or filtered servers
+    let toolsByServer: Record<string, ToolSchema[]>;
+
+    if (servers && servers.length > 0) {
+      // Fetch tools only from specified servers
+      toolsByServer = {};
+      for (const serverName of servers) {
+        toolsByServer[serverName] = await this.getTools(serverName);
+      }
+    } else {
+      // Fetch tools from all servers
+      toolsByServer = await this.getTools();
+    }
+
+    // Build functions from tool schemas
+    for (const [serverName, toolSchemas] of Object.entries(toolsByServer)) {
       for (const toolSchema of toolSchemas) {
-        const func = this.#functionBuilder.createFunctionFromSchema(toolSchema, serverName);
+        const func = this.#functionBuilder.createFunctionFromSchema(
+          toolSchema,
+          serverName,
+        );
         agentTools.push(func);
       }
     }
@@ -573,16 +583,17 @@ export class McpdClient {
   }
 
   /**
-   * Generate callable functions for use with AI agent frameworks (JavaScript naming convention).
+   * Generate callable functions for use with AI agent frameworks.
    *
-   * This method queries all servers via `getTools()` and creates self-contained,
+   * This method queries servers via `getTools()` and creates self-contained,
    * callable functions that can be passed to AI agent frameworks. Each function
    * includes its schema as metadata and handles the MCP communication internally.
    *
    * The generated functions are cached for performance. Use clearAgentToolsCache()
    * to force regeneration if servers or tools have changed.
    *
-   * @returns Array of callable functions with metadata
+   * @param options - Options for generating agent tools (format and server filtering)
+   * @returns Functions in the requested format (array, object, or map)
    *
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If requests to the daemon time out
@@ -592,41 +603,44 @@ export class McpdClient {
    *
    * @example
    * ```typescript
+   * // Get all tools from all servers (default array format)
    * const tools = await client.getAgentTools();
    * console.log(`Generated ${tools.length} callable tools`);
    *
-   * // Each function has metadata
-   * for (const tool of tools) {
-   *   console.log(`${tool.name}: ${tool.description}`);
-   * }
+   * // Get tools from specific servers
+   * const tools = await client.getAgentTools({ servers: ['time', 'fetch'] });
    *
-   * // Use with LangChain JS (expects array format)
-   * const langchainTools = await client.getAgentTools('array');
+   * // Use with LangChain JS (array format)
+   * const langchainTools = await client.getAgentTools({ format: 'array' });
    * const agent = await createOpenAIToolsAgent({ llm, tools: langchainTools, prompt });
    *
-   * // Use with Vercel AI SDK (expects object format)
-   * const vercelTools = await client.getAgentTools('object');
+   * // Use with Vercel AI SDK (object format) from specific servers
+   * const vercelTools = await client.getAgentTools({
+   *   servers: ['time'],
+   *   format: 'object'
+   * });
    * const result = await generateText({ model, tools: vercelTools, prompt });
    * ```
    */
-  // TypeScript overloads for different return types based on format parameter
-  async getAgentTools(): Promise<AgentFunction[]>;
-  async getAgentTools(format: 'array'): Promise<AgentFunction[]>;
-  async getAgentTools(format: 'object'): Promise<Record<string, AgentFunction>>;
-  async getAgentTools(format: 'map'): Promise<Map<string, AgentFunction>>;
-  async getAgentTools(format: ToolFormat = 'array'): Promise<AgentFunction[] | Record<string, AgentFunction> | Map<string, AgentFunction>> {
+  async getAgentTools(
+    options: AgentToolsOptions = {},
+  ): Promise<
+    AgentFunction[] | Record<string, AgentFunction> | Map<string, AgentFunction>
+  > {
+    const { servers, format = "array" } = options;
+
     // Get tools in array format (default internal representation)
-    const tools = await this.agentTools();
+    const tools = await this.agentTools(servers);
 
     // Return in requested format
     switch (format) {
-      case 'object':
-        return Object.fromEntries(tools.map(tool => [tool.name, tool]));
+      case "object":
+        return Object.fromEntries(tools.map((tool) => [tool.name, tool]));
 
-      case 'map':
-        return new Map(tools.map(tool => [tool.name, tool]));
+      case "map":
+        return new Map(tools.map((tool) => [tool.name, tool]));
 
-      case 'array':
+      case "array":
       default:
         return tools;
     }

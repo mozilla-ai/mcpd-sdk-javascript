@@ -9,11 +9,10 @@
  * The generated functions are self-contained and cached for performance.
  */
 
-import { z } from 'zod';
-import { McpdError, ValidationError } from './errors';
-import type { ToolSchema } from './types';
-import { TypeConverter } from './utils/typeConverter';
-import type { McpdClient } from './client';
+import { z } from "zod";
+import { McpdError, ValidationError } from "./errors";
+import type { ToolSchema, PerformCallFn } from "./types";
+import { TypeConverter } from "./utils/typeConverter";
 
 /**
  * Interface for generated agent functions with metadata.
@@ -28,14 +27,14 @@ export interface AgentFunction {
 
   // LangChain JS compatibility properties
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: z.ZodSchema<any>;                    // Zod schema for LangChain
+  schema: z.ZodSchema<any>; // Zod schema for LangChain
   invoke: (args: unknown) => Promise<unknown>; // Primary method for LangChain
-  lc_namespace: string[];                      // Required namespace for LangChain
-  returnDirect: boolean;                       // LangChain execution flag
+  lc_namespace: string[]; // Required namespace for LangChain
+  returnDirect: boolean; // LangChain execution flag
 
   // Vercel AI SDK compatibility properties
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inputSchema: z.ZodSchema<any>;              // Zod schema for Vercel AI SDK
+  inputSchema: z.ZodSchema<any>; // Zod schema for Vercel AI SDK
   execute: (args: unknown) => Promise<unknown>; // Primary method for Vercel AI SDK
 
   // Internal properties
@@ -55,17 +54,16 @@ export interface AgentFunction {
  * controlled by the owning McpdClient via clearCache().
  */
 export class FunctionBuilder {
-  #client: McpdClient;
+  #performCall: PerformCallFn;
   #functionCache: Map<string, AgentFunction> = new Map();
 
   /**
-   * Initialize a FunctionBuilder for the given client.
+   * Initialize a FunctionBuilder with an injected function.
    *
-   * @param client - The McpdClient instance that will be used to execute
-   *                the generated functions via _performCall().
+   * @param performCall - Function to execute tool calls
    */
-  constructor(client: McpdClient) {
-    this.#client = client;
+  constructor(performCall: PerformCallFn) {
+    this.#performCall = performCall;
   }
 
   /**
@@ -73,22 +71,24 @@ export class FunctionBuilder {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   #jsonSchemaToZod(jsonSchema: any): z.ZodSchema<any> {
-    if (!jsonSchema || typeof jsonSchema !== 'object') {
+    if (!jsonSchema || typeof jsonSchema !== "object") {
       return z.object({}); // Return empty object for undefined/null schemas
     }
 
     switch (jsonSchema.type) {
-      case 'string':
+      case "string":
         return z.string();
-      case 'number':
+      case "number":
         return z.number();
-      case 'integer':
+      case "integer":
         return z.number().int();
-      case 'boolean':
+      case "boolean":
         return z.boolean();
-      case 'array':
-        return z.array(jsonSchema.items ? this.#jsonSchemaToZod(jsonSchema.items) : z.any());
-      case 'object':
+      case "array":
+        return z.array(
+          jsonSchema.items ? this.#jsonSchemaToZod(jsonSchema.items) : z.any(),
+        );
+      case "object":
         // Handle object schemas that may or may not have properties
         if (jsonSchema.properties) {
           const propertyKeys = Object.keys(jsonSchema.properties);
@@ -149,7 +149,7 @@ export class FunctionBuilder {
    */
   private safeName(name: string): string {
     // Replace non-word characters and leading digits
-    return name.replace(/\W|^(?=\d)/g, '_');
+    return name.replace(/\W|^(?=\d)/g, "_");
   }
 
   /**
@@ -181,7 +181,10 @@ export class FunctionBuilder {
    * @param serverName - The name of the MCP server hosting this tool
    * @returns A callable JavaScript function with metadata
    */
-  createFunctionFromSchema(schema: ToolSchema, serverName: string): AgentFunction {
+  createFunctionFromSchema(
+    schema: ToolSchema,
+    serverName: string,
+  ): AgentFunction {
     const cacheKey = `${serverName}__${schema.name}`;
 
     // Return cached function if it exists
@@ -194,7 +197,10 @@ export class FunctionBuilder {
       this.#functionCache.set(cacheKey, generatedFunction);
       return generatedFunction;
     } catch (error) {
-      throw new McpdError(`Error creating function ${cacheKey}: ${(error as Error).message}`, error as Error);
+      throw new McpdError(
+        `Error creating function ${cacheKey}: ${(error as Error).message}`,
+        error as Error,
+      );
     }
   }
 
@@ -215,7 +221,12 @@ export class FunctionBuilder {
       // Handle both positional and named arguments
       let params: Record<string, unknown> = {};
 
-      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
+      if (
+        args.length === 1 &&
+        typeof args[0] === "object" &&
+        args[0] !== null &&
+        !Array.isArray(args[0])
+      ) {
         // Single object argument (named parameters)
         params = args[0] as Record<string, unknown>;
       } else {
@@ -232,15 +243,19 @@ export class FunctionBuilder {
       // Validate required parameters
       const missingParams: string[] = [];
       for (const paramName of required) {
-        if (!(paramName in params) || params[paramName] === null || params[paramName] === undefined) {
+        if (
+          !(paramName in params) ||
+          params[paramName] === null ||
+          params[paramName] === undefined
+        ) {
           missingParams.push(paramName);
         }
       }
 
       if (missingParams.length > 0) {
         throw new ValidationError(
-          `Missing required parameters: ${missingParams.join(', ')}`,
-          missingParams
+          `Missing required parameters: ${missingParams.join(", ")}`,
+          missingParams,
         );
       }
 
@@ -251,13 +266,18 @@ export class FunctionBuilder {
         if (paramValue !== null && paramValue !== undefined && paramSchema) {
           if (!TypeConverter.validateValue(paramValue, paramSchema)) {
             const expectedType = TypeConverter.getTypeDescription(paramSchema);
-            validationErrors.push(`Parameter '${paramName}' should be ${expectedType}, got ${typeof paramValue}`);
+            validationErrors.push(
+              `Parameter '${paramName}' should be ${expectedType}, got ${typeof paramValue}`,
+            );
           }
         }
       }
 
       if (validationErrors.length > 0) {
-        throw new ValidationError(`Parameter validation failed: ${validationErrors.join('; ')}`, validationErrors);
+        throw new ValidationError(
+          `Parameter validation failed: ${validationErrors.join("; ")}`,
+          validationErrors,
+        );
       }
 
       // Filter out null/undefined values
@@ -269,7 +289,7 @@ export class FunctionBuilder {
       }
 
       // Make the API call
-      return this.#client._performCall(serverName, schema.name, cleanParams);
+      return this.#performCall(serverName, schema.name, cleanParams);
     };
 
     // Create execution methods for both frameworks
@@ -292,20 +312,23 @@ export class FunctionBuilder {
     const agentFunction = implementation as AgentFunction;
 
     // Use Object.defineProperty for read-only 'name' property
-    Object.defineProperty(agentFunction, 'name', {
+    Object.defineProperty(agentFunction, "name", {
       value: qualifiedName,
       writable: false,
       enumerable: true,
-      configurable: true
+      configurable: true,
     });
 
     // Universal properties
-    agentFunction.description = schema.description || docstring.split('\n')[0] || 'No description provided';
+    agentFunction.description =
+      schema.description ||
+      docstring.split("\n")[0] ||
+      "No description provided";
 
     // LangChain JS compatibility properties
     agentFunction.schema = zodSchema;
     agentFunction.invoke = invoke;
-    agentFunction.lc_namespace = ['mcpd', 'tools'];
+    agentFunction.lc_namespace = ["mcpd", "tools"];
     agentFunction.returnDirect = false;
 
     // Vercel AI SDK compatibility properties
@@ -331,7 +354,7 @@ export class FunctionBuilder {
    * @returns A multi-line string containing the complete docstring text
    */
   private createDocstring(schema: ToolSchema): string {
-    const description = schema.description || 'No description provided';
+    const description = schema.description || "No description provided";
     const inputSchema = schema.inputSchema || {};
     const properties = inputSchema.properties || {};
     const required = new Set(inputSchema.required || []);
@@ -339,27 +362,31 @@ export class FunctionBuilder {
     const docstringParts = [description];
 
     if (Object.keys(properties).length > 0) {
-      docstringParts.push('');
-      docstringParts.push('Parameters:');
+      docstringParts.push("");
+      docstringParts.push("Parameters:");
 
       for (const [paramName, paramInfo] of Object.entries(properties)) {
         const isRequired = required.has(paramName);
-        const paramDesc = paramInfo.description || 'No description provided';
+        const paramDesc = paramInfo.description || "No description provided";
         const paramType = TypeConverter.getTypeDescription(paramInfo);
-        const requiredText = isRequired ? '' : ' (optional)';
-        docstringParts.push(`  ${paramName} (${paramType}): ${paramDesc}${requiredText}`);
+        const requiredText = isRequired ? "" : " (optional)";
+        docstringParts.push(
+          `  ${paramName} (${paramType}): ${paramDesc}${requiredText}`,
+        );
       }
     }
 
-    docstringParts.push('');
-    docstringParts.push('Returns:');
-    docstringParts.push('  Promise<any>: Function execution result');
-    docstringParts.push('');
-    docstringParts.push('Throws:');
-    docstringParts.push('  ValidationError: If required parameters are missing or invalid');
-    docstringParts.push('  McpdError: If the API call fails');
+    docstringParts.push("");
+    docstringParts.push("Returns:");
+    docstringParts.push("  Promise<any>: Function execution result");
+    docstringParts.push("");
+    docstringParts.push("Throws:");
+    docstringParts.push(
+      "  ValidationError: If required parameters are missing or invalid",
+    );
+    docstringParts.push("  McpdError: If the API call fails");
 
-    return docstringParts.join('\n');
+    return docstringParts.join("\n");
   }
 
   /**
