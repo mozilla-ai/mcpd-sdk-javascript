@@ -4,9 +4,9 @@ This sample application demonstrates how to run `mcpd` in daemon mode to start M
 
 ## Requirements
 
-* [Node.js](https://nodejs.org/) (version 18 or higher)
-* [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via: `brew install --cask mozilla-ai/tap/mcpd`
-* `OPENAI_API_KEY` exported - this will be used by Vercel AI SDK
+- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via: `brew install --cask mozilla-ai/tap/mcpd`
+- `OPENAI_API_KEY` exported - this will be used by Vercel AI SDK
 
 ## Installing mcpd
 
@@ -88,22 +88,26 @@ npm run dev
 ## What This Example Demonstrates
 
 ### 1. `mcpd` Integration
+
 - Connects to the mcpd daemon
 - Fetches available tools from MCP servers
 - Gets agent-ready functions using `client.getAgentTools()`
 
 ### 2. Direct Vercel AI SDK Compatibility
+
 - mcpd agent tools work directly with Vercel AI SDK (no conversion needed)
 - Built-in Zod schemas for parameter validation
 - Compatible `execute` methods and input schemas
 
 ### 3. AI Text Generation with Tools
+
 - Uses Vercel AI SDK's `generateText` with bound tools
 - Sends a natural language query: "What time is it in Tokyo?"
 - Demonstrates automatic tool selection and execution
 - Shows tool call results and final AI response
 
 ### 4. Error Handling
+
 - Handles connection errors to mcpd daemon
 - Manages tool execution failures
 - Provides helpful error messages and setup guidance
@@ -112,15 +116,15 @@ npm run dev
 
 ```javascript
 // 1. Connect to mcpd
-const mcpdClient = new McpdClient({ apiEndpoint: 'http://localhost:8090' });
+const mcpdClient = new McpdClient({ apiEndpoint: "http://localhost:8090" });
 
 // 2. Get agent tools in object format (Vercel AI SDK-compatible!)
-const tools = await mcpdClient.getAgentTools('object');
+const tools = await mcpdClient.getAgentTools({ format: "object" });
 
 // 3. Generate text with tools
 const result = await generateText({
-  model: openai('gpt-4o-mini'),
-  prompt: 'What time is it in Tokyo?',
+  model: openai("gpt-4o-mini"),
+  prompt: "What time is it in Tokyo?",
   tools: tools,
   maxToolRoundtrips: 5,
 });
@@ -131,18 +135,18 @@ const result = await generateText({
 This Vercel AI SDK example provides equivalent functionality to the LangChain example:
 
 | LangChain                      | Vercel AI SDK             |
-|--------------------------------|---------------------------|
+| ------------------------------ | ------------------------- |
 | `ChatOpenAI.bindTools()`       | `generateText({ tools })` |
 | `modelWithTools.invoke()`      | `generateText()`          |
 | Tool calling via `.tool_calls` | Automatic tool execution  |
 
 ## Framework Compatibility
 
-The mcpd SDK's `getAgentTools(format)` method returns tools in different formats for different frameworks:
+The mcpd SDK's `getAgentTools(options)` method returns tools in different formats for different frameworks:
 
-- `getAgentTools('array')` (default) - LangChain JS compatibility with `.bindTools()`
-- `getAgentTools('object')` - Vercel AI SDK compatibility with `generateText({ tools })`
-- `getAgentTools('map')` - Map format for efficient tool lookups
+- `getAgentTools({ format: 'array' })` (default) - LangChain JS compatibility with `.bindTools()`
+- `getAgentTools({ format: 'object' })` - Vercel AI SDK compatibility with `generateText({ tools })`
+- `getAgentTools({ format: 'map' })` - Map format for efficient tool lookups
 - Custom frameworks: Standard JavaScript functions with comprehensive metadata
 
 ## Next Steps

@@ -4,9 +4,9 @@ This sample application demonstrates how to run `mcpd` in daemon mode to start M
 
 ## Requirements
 
-* [Node.js](https://nodejs.org/) (version 18 or higher)
-* [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via Homebrew
-* `OPENAI_API_KEY` exported - this will be used by LangChain's ChatOpenAI
+- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via Homebrew
+- `OPENAI_API_KEY` exported - this will be used by LangChain's ChatOpenAI
 
 ## Installing mcpd
 
@@ -88,22 +88,26 @@ npm run dev
 ## What This Example Demonstrates
 
 ### 1. `mcpd` Integration
+
 - Connects to the mcpd daemon
 - Fetches available tools from MCP servers
 - Gets agent-ready functions using `client.getAgentTools()`
 
 ### 2. Direct LangChain Compatibility
+
 - mcpd agent tools work directly with LangChain (no conversion needed)
 - Built-in Zod schemas for parameter validation
 - Compatible `invoke()` methods and metadata
 
 ### 3. AI Agent Execution
+
 - Binds tools to ChatOpenAI model using `.bindTools()`
 - Sends a natural language query: "What time is it in Tokyo?"
 - Demonstrates how the model decides to call appropriate tools
 - Executes tool calls and shows results
 
 ### 4. Error Handling
+
 - Handles connection errors to mcpd daemon
 - Manages tool execution failures
 - Provides helpful error messages and setup guidance
@@ -112,32 +116,34 @@ npm run dev
 
 ```javascript
 // 1. Connect to mcpd
-const mcpdClient = new McpdClient({ apiEndpoint: 'http://localhost:8090' });
+const mcpdClient = new McpdClient({ apiEndpoint: "http://localhost:8090" });
 
 // 2. Get agent tools in array format (LangChain-compatible!)
-const tools = await mcpdClient.getAgentTools('array');
+const tools = await mcpdClient.getAgentTools({ format: "array" });
 
 // 3. Create model with tools
-const model = new ChatOpenAI({ modelName: 'gpt-4o-mini' });
+const model = new ChatOpenAI({ modelName: "gpt-4o-mini" });
 const modelWithTools = model.bindTools(tools);
 
 // 5. Ask question and execute tools
-const response = await modelWithTools.invoke([{
-  role: 'user',
-  content: 'What time is it in Tokyo?'
-}]);
+const response = await modelWithTools.invoke([
+  {
+    role: "user",
+    content: "What time is it in Tokyo?",
+  },
+]);
 ```
 
 ## Comparison with Python AnyAgent Example
 
 This JavaScript/LangChain example provides equivalent functionality to the Python AnyAgent example:
 
-| Python (AnyAgent) | JavaScript (LangChain) |
-|-------------------|------------------------|
-| `any_agent.AgentConfig` | `ChatOpenAI.bindTools()` |
+| Python (AnyAgent)           | JavaScript (LangChain)        |
+| --------------------------- | ----------------------------- |
+| `any_agent.AgentConfig`     | `ChatOpenAI.bindTools()`      |
 | `mcpd_client.agent_tools()` | `mcpd_client.getAgentTools()` |
-| `AnyAgent.create().run()` | `modelWithTools.invoke()` |
-| `gpt-4.1-nano` | `gpt-4o-mini` |
+| `AnyAgent.create().run()`   | `modelWithTools.invoke()`     |
+| `gpt-4.1-nano`              | `gpt-4o-mini`                 |
 
 ## Next Steps
 
