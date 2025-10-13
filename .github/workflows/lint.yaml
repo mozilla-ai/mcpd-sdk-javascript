@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linting
+      - name: Run linting and typecheck
         run: npm run lint
 
       - name: Run formatting

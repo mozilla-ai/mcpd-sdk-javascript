@@ -622,6 +622,18 @@ export class McpdClient {
    * const result = await generateText({ model, tools: vercelTools, prompt });
    * ```
    */
+  async getAgentTools(options?: {
+    format?: "array";
+    servers?: string[];
+  }): Promise<AgentFunction[]>;
+  async getAgentTools(options: {
+    format: "object";
+    servers?: string[];
+  }): Promise<Record<string, AgentFunction>>;
+  async getAgentTools(options: {
+    format: "map";
+    servers?: string[];
+  }): Promise<Map<string, AgentFunction>>;
   async getAgentTools(
     options: AgentToolsOptions = {},
   ): Promise<

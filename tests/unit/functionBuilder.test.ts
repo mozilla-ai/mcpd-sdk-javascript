@@ -253,7 +253,7 @@ describe("FunctionBuilder", () => {
       const func2 = builder.createFunctionFromSchema(schema, "server");
 
       expect(func1).not.toBe(func2); // Different instances
-      expect(func1.__name__).toBe(func2.__name__); // Same name
+      expect(func1.name).toBe(func2.name); // Same name
     });
   });
 

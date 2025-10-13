@@ -382,18 +382,23 @@ describe("McpdClient", () => {
         json: async () => ({ tools: mockAllTools.math }),
       });
 
-      const tools = await client.getAgentTools();
+      const tools = await client.getAgentTools({ format: "array" });
 
       expect(tools).toHaveLength(2);
-      expect(tools[0].name).toBe("time__get_current_time");
-      expect(tools[0].description).toContain("Get current time");
-      expect(tools[0]._serverName).toBe("time");
-      expect(tools[0]._toolName).toBe("get_current_time");
 
-      expect(tools[1].name).toBe("math__add");
-      expect(tools[1].description).toContain("Add two numbers");
-      expect(tools[1]._serverName).toBe("math");
-      expect(tools[1]._toolName).toBe("add");
+      const tool0 = tools[0];
+      expect(tool0).toBeDefined();
+      expect(tool0?.name).toBe("time__get_current_time");
+      expect(tool0?.description).toContain("Get current time");
+      expect(tool0?._serverName).toBe("time");
+      expect(tool0?._toolName).toBe("get_current_time");
+
+      const tool1 = tools[1];
+      expect(tool1).toBeDefined();
+      expect(tool1?.name).toBe("math__add");
+      expect(tool1?.description).toContain("Add two numbers");
+      expect(tool1?._serverName).toBe("math");
+      expect(tool1?._toolName).toBe("add");
     });
 
     it("should return empty array when no tools available", async () => {
@@ -403,7 +408,7 @@ describe("McpdClient", () => {
         json: async () => [],
       });
 
-      const tools = await client.getAgentTools();
+      const tools = await client.getAgentTools({ format: "array" });
 
       expect(tools).toHaveLength(0);
     });
