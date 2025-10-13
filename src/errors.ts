@@ -19,7 +19,7 @@ export class McpdError extends Error {
     super(message);
     this.name = "McpdError";
     this.cause = cause;
-    Object.setPrototypeOf(this, McpdError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -36,7 +36,7 @@ export class ConnectionError extends McpdError {
   constructor(message: string, cause?: Error) {
     super(message, cause);
     this.name = "ConnectionError";
-    Object.setPrototypeOf(this, ConnectionError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -52,7 +52,7 @@ export class AuthenticationError extends McpdError {
   constructor(message: string, cause?: Error) {
     super(message, cause);
     this.name = "AuthenticationError";
-    Object.setPrototypeOf(this, AuthenticationError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -71,7 +71,7 @@ export class ServerNotFoundError extends McpdError {
     super(message, cause);
     this.name = "ServerNotFoundError";
     this.serverName = serverName;
-    Object.setPrototypeOf(this, ServerNotFoundError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -97,7 +97,7 @@ export class ServerUnhealthyError extends McpdError {
     this.name = "ServerUnhealthyError";
     this.serverName = serverName;
     this.healthStatus = healthStatus;
-    Object.setPrototypeOf(this, ServerUnhealthyError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -123,7 +123,7 @@ export class ToolNotFoundError extends McpdError {
     this.name = "ToolNotFoundError";
     this.serverName = serverName;
     this.toolName = toolName;
-    Object.setPrototypeOf(this, ToolNotFoundError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -153,7 +153,7 @@ export class ToolExecutionError extends McpdError {
     this.serverName = serverName;
     this.toolName = toolName;
     this.errorModel = errorModel;
-    Object.setPrototypeOf(this, ToolExecutionError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -172,7 +172,7 @@ export class ValidationError extends McpdError {
     super(message, cause);
     this.name = "ValidationError";
     this.validationErrors = validationErrors || [];
-    Object.setPrototypeOf(this, ValidationError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
@@ -198,6 +198,6 @@ export class TimeoutError extends McpdError {
     this.name = "TimeoutError";
     this.operation = operation;
     this.timeout = timeout;
-    Object.setPrototypeOf(this, TimeoutError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
