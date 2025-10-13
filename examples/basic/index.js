@@ -40,20 +40,25 @@ async function main() {
         console.log(`  - ${tool.name}: ${tool.description || 'No description'}`);
       }
 
-      // Check if get_current_time tool exists
-      if (await client.servers.time.hasTool('get_current_time')) {
-        // Call the tool
+      // Check if a tool exists before calling it
+      const hasTool = await client.servers.time.tools.hasTool('get_current_time');
+      console.log(`Has tool 'get_current_time': ${hasTool}`);
+
+      if (hasTool) {
         console.log('Getting current time in different timezones:');
 
-        const utcTime = await client.servers.time.get_current_time({ timezone: 'UTC' });
+        // Call tools using property access (recommended)
+        const utcTime = await client.servers.time.tools.get_current_time({ timezone: 'UTC' });
         console.log('UTC:');
         console.log(utcTime);
 
-        const tokyoTime = await client.servers.time.get_current_time({ timezone: 'Asia/Tokyo' });
+        const tokyoTime = await client.servers.time.tools.get_current_time({ timezone: 'Asia/Tokyo' });
         console.log('Tokyo:');
         console.log(tokyoTime);
 
-        const nyTime = await client.servers.time.get_current_time({ timezone: 'America/New_York' });
+        // Alternative: Use callTool() for dynamic tool names
+        const toolName = 'get_current_time';
+        const nyTime = await client.servers.time.tools.callTool(toolName, { timezone: 'America/New_York' });
         console.log('New York:');
         console.log(nyTime);
       }
@@ -63,7 +68,7 @@ async function main() {
     console.log('Error handling example:');
     try {
       // Try to call a non-existent tool
-      await client.servers.nonexistent_server.nonexistent_tool();
+      await client.servers.nonexistent_server.tools.nonexistent_tool();
     } catch (error) {
       if (error instanceof McpdError) {
         console.log(`... Caught expected error: ${error.name} - ${error.message}`);

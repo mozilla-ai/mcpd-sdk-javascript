@@ -37,7 +37,7 @@ async function main() {
 
     // Get agent tools from mcpd in Vercel AI SDK format (object format)
     console.log('🛠️  Fetching tools from MCP servers...');
-    const tools = await mcpdClient.getAgentTools('object');
+    const tools = await mcpdClient.getAgentTools({ format: 'object' });
     console.log(`Found ${Object.keys(tools).length} tools from MCP servers`);
 
     if (Object.keys(tools).length === 0) {

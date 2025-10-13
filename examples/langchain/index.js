@@ -36,9 +36,9 @@ async function main() {
       apiKey: mcpdApiKey,
     });
 
-    // Get agent tools from mcpd in LangChain format (array format)
+    // Get agent tools from mcpd in LangChain format (array format is default)
     console.log('🛠️  Fetching tools from MCP servers...');
-    const tools = await mcpdClient.getAgentTools('array');
+    const tools = await mcpdClient.getAgentTools({ format: 'array' });
     console.log(`Found ${tools.length} tools from MCP servers`);
 
     if (tools.length === 0) {
