@@ -122,6 +122,150 @@ describe("McpdClient", () => {
     });
   });
 
+  describe("getToolSchemas()", () => {
+    it("should return all tools from all servers with transformed names", async () => {
+      const mockTools = {
+        time: [
+          { name: "get_current_time", description: "Get current time" },
+          { name: "convert_timezone", description: "Convert timezone" },
+        ],
+        math: [{ name: "add", description: "Add two numbers" }],
+      };
+
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["time", "math"],
+      });
+
+      // Second call: health check for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Third call: tools for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.time }),
+      });
+
+      // Fourth call: health check for 'math'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "1ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Fifth call: tools for 'math'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.math }),
+      });
+
+      const tools = await client.getToolSchemas();
+
+      expect(tools).toHaveLength(3);
+      expect(tools[0]?.name).toBe("time__get_current_time");
+      expect(tools[1]?.name).toBe("time__convert_timezone");
+      expect(tools[2]?.name).toBe("math__add");
+    });
+
+    it("should filter tools by specified servers", async () => {
+      const mockTools = {
+        time: [{ name: "get_current_time", description: "Get current time" }],
+      };
+
+      // First call: health check for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Second call: tools for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.time }),
+      });
+
+      const tools = await client.getToolSchemas({ servers: ["time"] });
+
+      expect(tools).toHaveLength(1);
+      expect(tools[0]?.name).toBe("time__get_current_time");
+    });
+
+    it("should return empty array when no tools available", async () => {
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [],
+      });
+
+      const tools = await client.getToolSchemas();
+
+      expect(tools).toHaveLength(0);
+    });
+
+    it("should skip unhealthy servers and continue", async () => {
+      const mockTools = {
+        time: [{ name: "get_current_time", description: "Get current time" }],
+      };
+
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["time", "unhealthy"],
+      });
+
+      // Second call: health check for 'time' (healthy)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Third call: tools for 'time'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTools.time }),
+      });
+
+      // Fourth call: health check for 'unhealthy' (fails)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "error",
+          latency: "0ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      const tools = await client.getToolSchemas();
+
+      // Should only get tools from healthy server
+      expect(tools).toHaveLength(1);
+      expect(tools[0]?.name).toBe("time__get_current_time");
+    });
+  });
+
   describe("getServerHealth()", () => {
     it("should return health for all servers", async () => {
       const mockApiResponse = {

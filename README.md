@@ -122,6 +122,31 @@ const servers = await client.listServers();
 // Returns: ['time', 'fetch', 'git']
 ```
 
+#### `client.getToolSchemas(options?)`
+
+Returns tool schemas from all (or specific) servers with names transformed to `serverName__toolName` format.
+
+**IMPORTANT**: Tool names are automatically transformed to prevent naming clashes and identify server origin. Original tool name `get_current_time` on server `time` becomes `time__get_current_time`.
+
+This is useful for:
+
+- MCP servers aggregating and re-exposing tools from multiple upstream servers
+- Tool inspection and discovery across all servers
+- Custom tooling that needs raw MCP tool schemas with unique names
+
+```typescript
+// Get all tools from all servers
+const allTools = await client.getToolSchemas();
+// Returns: [
+//   { name: "time__get_current_time", description: "...", inputSchema: {...} },
+//   { name: "fetch__fetch_url", description: "...", inputSchema: {...} },
+//   { name: "git__commit", description: "...", inputSchema: {...} }
+// ]
+
+// Get tools from specific servers only
+const someTools = await client.getToolSchemas({ servers: ["time", "fetch"] });
+```
+
 #### `client.servers.<server>.listTools()`
 
 Returns tool schemas for a specific server.

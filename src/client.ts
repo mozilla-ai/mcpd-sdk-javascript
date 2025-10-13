@@ -249,6 +249,71 @@ export class McpdClient {
   }
 
   /**
+   * Get tool schemas from all (or specific) MCP servers with transformed names.
+   *
+   * IMPORTANT: Tool names are transformed to `serverName__toolName` format to:
+   * 1. Prevent naming clashes when aggregating tools from multiple servers
+   * 2. Identify which server each tool belongs to
+   *
+   * This is useful for:
+   * - MCP servers that aggregate and re-expose tools from multiple upstream servers
+   * - Tool inspection and discovery across all servers
+   * - Custom tooling that needs raw MCP tool schemas
+   *
+   * @param options - Optional configuration
+   * @param options.servers - Array of server names to include. If not specified, includes all servers.
+   * @returns Array of tool schemas with transformed names (serverName__toolName)
+   * @throws {McpdError} If requests fail
+   *
+   * @example
+   * ```typescript
+   * // Get all tools from all servers
+   * const allTools = await client.getToolSchemas();
+   * // Returns: [
+   * //   { name: "time__get_current_time", description: "...", ... },
+   * //   { name: "fetch__fetch_url", description: "...", ... }
+   * // ]
+   *
+   * // Get tools from specific servers only
+   * const someTools = await client.getToolSchemas({ servers: ['time', 'fetch'] });
+   *
+   * // Original tool name "get_current_time" becomes "time__get_current_time"
+   * // This prevents clashes if multiple servers have tools with the same name
+   * ```
+   */
+  async getToolSchemas(options?: {
+    servers?: string[];
+  }): Promise<ToolSchema[]> {
+    const { servers } = options || {};
+
+    // Determine which servers to query
+    const serverNames =
+      servers && servers.length > 0 ? servers : await this.listServers();
+
+    const allTools: ToolSchema[] = [];
+
+    // Fetch tools from each server
+    for (const serverName of serverNames) {
+      try {
+        const tools = await this.#getToolsByServer(serverName);
+
+        // Transform tool names to serverName__toolName format
+        for (const tool of tools) {
+          allTools.push({
+            ...tool,
+            name: `${serverName}__${tool.name}`,
+          });
+        }
+      } catch (error) {
+        // If we can't get tools for a server, skip it with a warning
+        console.warn(`Failed to get tools for server '${serverName}':`, error);
+      }
+    }
+
+    return allTools;
+  }
+
+  /**
    * Internal method to get tool schemas for a server.
    * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
