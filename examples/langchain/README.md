@@ -4,7 +4,7 @@ This sample application demonstrates how to run `mcpd` in daemon mode to start M
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [Node.js](https://nodejs.org/) (version 22 LTS or higher)
 - [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via Homebrew
 - `OPENAI_API_KEY` exported - this will be used by LangChain's ChatOpenAI
 
