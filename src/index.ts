@@ -15,7 +15,7 @@
  * @packageDocumentation
  */
 
-export { McpdClient } from './client';
+export { McpdClient } from "./client";
 
 // Export error types
 export {
@@ -28,7 +28,7 @@ export {
   ToolExecutionError,
   ToolNotFoundError,
   ValidationError,
-} from './errors';
+} from "./errors";
 
 // Export type definitions
 export {
@@ -42,4 +42,6 @@ export {
   type McpdClientOptions,
   type ErrorDetail,
   type ErrorModel,
-} from './types';
+  type ToolFormat,
+  type AgentToolsOptions,
+} from "./types";

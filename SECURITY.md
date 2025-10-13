@@ -11,7 +11,7 @@ This document outlines the process for reporting vulnerabilities in `mcpd-sdk-py
 The following versions are currently supported for security updates:
 
 | Version | Supported          |
-|---------|--------------------|
+| ------- | ------------------ |
 | 0.0.x   | :white_check_mark: |
 
 **Please ensure you are using a supported version when reporting a vulnerability.**
@@ -33,11 +33,11 @@ Please include the following information in your report:
 
 ### Our Commitment
 
-* We will acknowledge receipt of your report within 2 business days.
-* We will investigate the report promptly and provide an initial assessment within 5 business days.
-* We will keep you informed of our progress throughout the vulnerability resolution process.
-* Once the vulnerability is patched, we will notify you and, with your permission, include your name in our release notes or security advisory as a thank you for your responsible disclosure.
-* We follow a 'coordinated disclosure' approach, meaning we aim to have a fix available before public disclosure.
+- We will acknowledge receipt of your report within 2 business days.
+- We will investigate the report promptly and provide an initial assessment within 5 business days.
+- We will keep you informed of our progress throughout the vulnerability resolution process.
+- Once the vulnerability is patched, we will notify you and, with your permission, include your name in our release notes or security advisory as a thank you for your responsible disclosure.
+- We follow a 'coordinated disclosure' approach, meaning we aim to have a fix available before public disclosure.
 
 ### Public Disclosure
 

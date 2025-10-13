@@ -5,7 +5,7 @@
  * different error scenarios appropriately.
  */
 
-import type { ErrorModel } from './types';
+import type { ErrorModel } from "./types";
 
 /**
  * Base exception for all mcpd SDK errors.
@@ -17,7 +17,7 @@ import type { ErrorModel } from './types';
 export class McpdError extends Error {
   constructor(message: string, cause?: Error) {
     super(message);
-    this.name = 'McpdError';
+    this.name = "McpdError";
     this.cause = cause;
     Object.setPrototypeOf(this, McpdError.prototype);
   }
@@ -35,7 +35,7 @@ export class McpdError extends Error {
 export class ConnectionError extends McpdError {
   constructor(message: string, cause?: Error) {
     super(message, cause);
-    this.name = 'ConnectionError';
+    this.name = "ConnectionError";
     Object.setPrototypeOf(this, ConnectionError.prototype);
   }
 }
@@ -51,7 +51,7 @@ export class ConnectionError extends McpdError {
 export class AuthenticationError extends McpdError {
   constructor(message: string, cause?: Error) {
     super(message, cause);
-    this.name = 'AuthenticationError';
+    this.name = "AuthenticationError";
     Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
 }
@@ -69,7 +69,7 @@ export class ServerNotFoundError extends McpdError {
 
   constructor(message: string, serverName?: string, cause?: Error) {
     super(message, cause);
-    this.name = 'ServerNotFoundError';
+    this.name = "ServerNotFoundError";
     this.serverName = serverName;
     Object.setPrototypeOf(this, ServerNotFoundError.prototype);
   }
@@ -87,9 +87,14 @@ export class ServerUnhealthyError extends McpdError {
   public readonly serverName: string;
   public readonly healthStatus: string;
 
-  constructor(message: string, serverName: string, healthStatus: string, cause?: Error) {
+  constructor(
+    message: string,
+    serverName: string,
+    healthStatus: string,
+    cause?: Error,
+  ) {
     super(message, cause);
-    this.name = 'ServerUnhealthyError';
+    this.name = "ServerUnhealthyError";
     this.serverName = serverName;
     this.healthStatus = healthStatus;
     Object.setPrototypeOf(this, ServerUnhealthyError.prototype);
@@ -108,9 +113,14 @@ export class ToolNotFoundError extends McpdError {
   public readonly serverName: string | undefined;
   public readonly toolName: string | undefined;
 
-  constructor(message: string, serverName?: string, toolName?: string, cause?: Error) {
+  constructor(
+    message: string,
+    serverName?: string,
+    toolName?: string,
+    cause?: Error,
+  ) {
     super(message, cause);
-    this.name = 'ToolNotFoundError';
+    this.name = "ToolNotFoundError";
     this.serverName = serverName;
     this.toolName = toolName;
     Object.setPrototypeOf(this, ToolNotFoundError.prototype);
@@ -136,10 +146,10 @@ export class ToolExecutionError extends McpdError {
     serverName?: string,
     toolName?: string,
     errorModel?: ErrorModel,
-    cause?: Error
+    cause?: Error,
   ) {
     super(message, cause);
-    this.name = 'ToolExecutionError';
+    this.name = "ToolExecutionError";
     this.serverName = serverName;
     this.toolName = toolName;
     this.errorModel = errorModel;
@@ -160,7 +170,7 @@ export class ValidationError extends McpdError {
 
   constructor(message: string, validationErrors?: string[], cause?: Error) {
     super(message, cause);
-    this.name = 'ValidationError';
+    this.name = "ValidationError";
     this.validationErrors = validationErrors || [];
     Object.setPrototypeOf(this, ValidationError.prototype);
   }
@@ -178,9 +188,14 @@ export class TimeoutError extends McpdError {
   public readonly operation: string | undefined;
   public readonly timeout: number | undefined;
 
-  constructor(message: string, operation?: string, timeout?: number, cause?: Error) {
+  constructor(
+    message: string,
+    operation?: string,
+    timeout?: number,
+    cause?: Error,
+  ) {
     super(message, cause);
-    this.name = 'TimeoutError';
+    this.name = "TimeoutError";
     this.operation = operation;
     this.timeout = timeout;
     Object.setPrototypeOf(this, TimeoutError.prototype);

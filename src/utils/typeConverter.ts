@@ -10,7 +10,7 @@
  * human-readable type descriptions for dynamically generated functions.
  */
 
-import type { JsonSchema } from '../types';
+import type { JsonSchema } from "../types";
 
 /**
  * Maps JSON Schema types to JavaScript/TypeScript types.
@@ -29,27 +29,30 @@ export class TypeConverter {
    * - "null" → "null"
    * - unknown types → "any"
    */
-  static jsonTypeToJavaScriptType(jsonType: string, schemaDef: JsonSchema): string {
+  static jsonTypeToJavaScriptType(
+    jsonType: string,
+    schemaDef: JsonSchema,
+  ): string {
     switch (jsonType) {
-      case 'string':
+      case "string":
         if (schemaDef.enum && Array.isArray(schemaDef.enum)) {
           // For enums, we'll use string but note the allowed values
-          return 'string';
+          return "string";
         }
-        return 'string';
-      case 'number':
-      case 'integer':
-        return 'number';
-      case 'boolean':
-        return 'boolean';
-      case 'array':
-        return 'array';
-      case 'object':
-        return 'object';
-      case 'null':
-        return 'null';
+        return "string";
+      case "number":
+      case "integer":
+        return "number";
+      case "boolean":
+        return "boolean";
+      case "array":
+        return "array";
+      case "object":
+        return "object";
+      case "null":
+        return "null";
       default:
-        return 'any';
+        return "any";
     }
   }
 
@@ -60,17 +63,17 @@ export class TypeConverter {
     if (schemaDef.anyOf && Array.isArray(schemaDef.anyOf)) {
       // For unions, we'll use the first type or 'any' if complex
       const firstType = schemaDef.anyOf[0];
-      if (firstType && typeof firstType === 'object' && firstType.type) {
+      if (firstType && typeof firstType === "object" && firstType.type) {
         return this.jsonTypeToJavaScriptType(firstType.type, firstType);
       }
-      return 'any';
+      return "any";
     }
 
     if (schemaDef.type) {
       return this.jsonTypeToJavaScriptType(schemaDef.type, schemaDef);
     }
 
-    return 'any';
+    return "any";
   }
 
   /**
@@ -80,10 +83,10 @@ export class TypeConverter {
     const baseType = this.parseSchemaType(schemaDef);
 
     if (schemaDef.enum && Array.isArray(schemaDef.enum)) {
-      return `one of: ${schemaDef.enum.map((v) => JSON.stringify(v)).join(', ')}`;
+      return `one of: ${schemaDef.enum.map((v) => JSON.stringify(v)).join(", ")}`;
     }
 
-    if (schemaDef.type === 'array' && schemaDef.items) {
+    if (schemaDef.type === "array" && schemaDef.items) {
       const itemType = this.parseSchemaType(schemaDef.items);
       return `array of ${itemType}`;
     }
@@ -98,7 +101,10 @@ export class TypeConverter {
   static validateValue(value: unknown, schemaDef: JsonSchema): boolean {
     if (value === null || value === undefined) {
       // Null/undefined handling depends on whether the schema allows null
-      return schemaDef.type === 'null' || (schemaDef.anyOf?.some((s: JsonSchema) => s.type === 'null') ?? false);
+      return (
+        schemaDef.type === "null" ||
+        (schemaDef.anyOf?.some((s: JsonSchema) => s.type === "null") ?? false)
+      );
     }
 
     if (schemaDef.enum && Array.isArray(schemaDef.enum)) {
@@ -106,7 +112,9 @@ export class TypeConverter {
     }
 
     if (schemaDef.anyOf && Array.isArray(schemaDef.anyOf)) {
-      return schemaDef.anyOf.some((subSchema) => this.validateValue(value, subSchema));
+      return schemaDef.anyOf.some((subSchema) =>
+        this.validateValue(value, subSchema),
+      );
     }
 
     if (!schemaDef.type) {
@@ -114,23 +122,27 @@ export class TypeConverter {
     }
 
     switch (schemaDef.type) {
-      case 'string':
-        return typeof value === 'string';
-      case 'number':
-        return typeof value === 'number' && isFinite(value);
-      case 'integer':
-        return typeof value === 'number' && Number.isInteger(value);
-      case 'boolean':
-        return typeof value === 'boolean';
-      case 'array':
+      case "string":
+        return typeof value === "string";
+      case "number":
+        return typeof value === "number" && isFinite(value);
+      case "integer":
+        return typeof value === "number" && Number.isInteger(value);
+      case "boolean":
+        return typeof value === "boolean";
+      case "array":
         if (!Array.isArray(value)) return false;
         if (schemaDef.items) {
-          return value.every((item) => this.validateValue(item, schemaDef.items!));
+          return value.every((item) =>
+            this.validateValue(item, schemaDef.items!),
+          );
         }
         return true;
-      case 'object':
-        return typeof value === 'object' && value !== null && !Array.isArray(value);
-      case 'null':
+      case "object":
+        return (
+          typeof value === "object" && value !== null && !Array.isArray(value)
+        );
+      case "null":
         return value === null;
       default:
         return true; // Unknown type, allow anything

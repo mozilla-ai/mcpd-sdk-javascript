@@ -47,38 +47,41 @@ By contributing to this project, you agree to abide by our [Code of Conduct](COD
 ## How to Contribute
 
 ### **Browse Existing Issues** 🔍
+
 - Check the Issues page to see if there are any tasks you'd like to tackle.
 - Look for issues labeled **`good first issue`** if you're new to the project—they're a great place to start.
 
 ### **Report Issues** 🐛
+
 - **Bugs:** Please use our [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.yaml) to provide clear steps to reproduce and environment details.
 - **Search First:** Before creating a new issue, please search existing issues to see if your topic has already been discussed.
 - Provide as much detail as possible, including the steps to reproduce the issue and expected vs. actual behavior.
 
 ### **Suggest Features** 🚀
+
 - **Features:** Please use our [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.yaml) to describe the problem your idea solves and your proposed solution.
 - Share why the feature is important and any alternative solutions you've considered.
 - If the PR is to implement a new feature, please first make a GitHub issue to suggest the feature and allow for discussion.
 
 ### Requirements
 
-* Node.js 18+ and npm
-* Run `npm install` to install dependencies
+- Node.js 18+ and npm
+- Run `npm install` to install dependencies
 
 ### **Submit Pull Requests** 💻
 
 1. **Fork** the repository on GitHub.
 2. **Clone** your forked repository to your local machine.
-    ```bash
-    git clone https://github.com/{YOUR_GITHUB_USERNAME}/mcpd-sdk-javascript.git
-    cd mcpd-sdk-javascript
-    ```
+   ```bash
+   git clone https://github.com/{YOUR_GITHUB_USERNAME}/mcpd-sdk-javascript.git
+   cd mcpd-sdk-javascript
+   ```
 3. **Create a new branch** for your changes based on the `main` branch.
-    ```bash
-    git checkout main
-    git pull origin main
-    git checkout -b your-feature-or-bugfix-branch
-    ```
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b your-feature-or-bugfix-branch
+   ```
 4. **Install dependencies:**
    ```bash
    npm install
