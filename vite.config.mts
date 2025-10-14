@@ -4,6 +4,7 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig({
   build: {
+    ssr: true,
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'McpdSdk',
@@ -11,16 +12,10 @@ export default defineConfig({
       formats: ['cjs', 'es'],
     },
     rollupOptions: {
-      // Externalize deps that shouldn't be bundled into your library
-      external: ['lru-cache'],
-      output: {
-        globals: {
-          'lru-cache': 'LRUCache',
-        },
-      },
+      external: [/^node:/],
     },
     sourcemap: true,
-    target: 'node18',
+    target: 'node22',
     outDir: 'dist',
     emptyOutDir: true,
   },

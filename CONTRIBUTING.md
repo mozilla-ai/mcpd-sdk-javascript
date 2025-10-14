@@ -65,7 +65,7 @@ By contributing to this project, you agree to abide by our [Code of Conduct](COD
 
 ### Requirements
 
-- Node.js 18+ and npm
+- Node.js 22+ and npm
 - Run `npm install` to install dependencies
 
 ### **Submit Pull Requests** 💻
