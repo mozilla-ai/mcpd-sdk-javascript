@@ -250,11 +250,15 @@ describe("API Surface - Complete Test Coverage", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ status: "ok" }),
+      json: async () => ({
+        servers: [{ name: "time", status: "ok" }],
+      }),
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ tools: [{ name: "get_time" }] }),
+      json: async () => ({
+        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
+      }),
     });
 
     const schemas = await client.getToolSchemas();
@@ -264,11 +268,15 @@ describe("API Surface - Complete Test Coverage", () => {
   it("client.getToolSchemas(options) - with servers filter", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ status: "ok" }),
+      json: async () => ({
+        servers: [{ name: "time", status: "ok" }],
+      }),
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ tools: [{ name: "get_time" }] }),
+      json: async () => ({
+        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
+      }),
     });
 
     const schemas = await client.getToolSchemas({ servers: ["time"] });
@@ -282,7 +290,9 @@ describe("API Surface - Complete Test Coverage", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ status: "ok" }),
+      json: async () => ({
+        servers: [{ name: "time", status: "ok" }],
+      }),
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,

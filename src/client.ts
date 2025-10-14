@@ -255,6 +255,12 @@ export class McpdClient {
    * 1. Prevent naming clashes when aggregating tools from multiple servers
    * 2. Identify which server each tool belongs to
    *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching tools. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Tool fetches from multiple servers are executed concurrently for optimal performance.
+   *
    * This is useful for:
    * - MCP servers that aggregate and re-expose tools from multiple upstream servers
    * - Tool inspection and discovery across all servers
@@ -262,8 +268,11 @@ export class McpdClient {
    *
    * @param options - Optional configuration
    * @param options.servers - Array of server names to include. If not specified, includes all servers.
-   * @returns Array of tool schemas with transformed names (serverName__toolName)
-   * @throws {McpdError} If requests fail
+   * @returns Array of tool schemas with transformed names (serverName__toolName). Only includes tools from healthy servers.
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If requests to the daemon time out
+   * @throws {AuthenticationError} If API key authentication fails
+   * @throws {McpdError} If health check or initial server listing fails
    *
    * @example
    * ```typescript
@@ -288,13 +297,28 @@ export class McpdClient {
     const serverNames =
       servers && servers.length > 0 ? servers : await this.listServers();
 
+    // Get health status for all servers (single API call)
+    const healthMap = await this.getServerHealth();
+
+    // Filter to only healthy servers
+    const healthyServers = serverNames.filter((name) => {
+      const health = healthMap[name];
+      return health && HealthStatusHelpers.isHealthy(health.status);
+    });
+
+    // Fetch tools from all healthy servers in parallel
+    const results = await Promise.allSettled(
+      healthyServers.map(async (serverName) => ({
+        serverName,
+        tools: await this.#getToolsByServer(serverName),
+      })),
+    );
+
+    // Process results and transform tool names
     const allTools: Tool[] = [];
-
-    // Fetch tools from each server
-    for (const serverName of serverNames) {
-      try {
-        const tools = await this.#getToolsByServer(serverName);
-
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { serverName, tools } = result.value;
         // Transform tool names to serverName__toolName format
         for (const tool of tools) {
           allTools.push({
@@ -302,9 +326,9 @@ export class McpdClient {
             name: `${serverName}__${tool.name}`,
           });
         }
-      } catch (error) {
+      } else {
         // If we can't get tools for a server, skip it with a warning
-        console.warn(`Failed to get tools for server '${serverName}':`, error);
+        console.warn(`Failed to get tools for server:`, result.reason);
       }
     }
 
@@ -318,6 +342,9 @@ export class McpdClient {
    * @param serverName - Server name to get tools for
    * @returns Tool schemas for the specified server
    * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
    * @internal
    */
@@ -402,6 +429,9 @@ export class McpdClient {
       const healthMap: Record<string, ServerHealth> = {};
       for (const server of response.servers) {
         healthMap[server.name] = server;
+        // Cache individual server health for subsequent calls
+        const cacheKey = `health:${server.name}`;
+        this.#serverHealthCache.set(cacheKey, server);
       }
       return healthMap;
     }
@@ -536,57 +566,62 @@ export class McpdClient {
   /**
    * Generate callable functions for use with AI agent frameworks (internal).
    *
-   * This method queries servers via `getTools()` and creates self-contained,
-   * callable functions that can be passed to AI agent frameworks. Each function
-   * includes its schema as metadata and handles the MCP communication internally.
+   * This method queries servers and creates self-contained, callable functions
+   * that can be passed to AI agent frameworks. Each function includes its schema
+   * as metadata and handles the MCP communication internally.
+   *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching tools. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
    * @param servers - Optional list of server names to include. If not specified, includes all servers.
-   * @returns Array of callable functions with metadata
+   * @returns Array of callable functions with metadata. Only includes tools from healthy servers.
    *
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If requests to the daemon time out
    * @throws {AuthenticationError} If API key authentication fails
-   * @throws {ServerNotFoundError} If a server becomes unavailable during tool retrieval
-   * @throws {McpdError} If unable to retrieve tool definitions or generate functions
+   * @throws {McpdError} If unable to retrieve health status, server list, or generate functions
    * @internal
    */
   async agentTools(servers?: string[]): Promise<AgentFunction[]> {
-    const agentTools: AgentFunction[] = [];
+    // Determine which servers to query
+    const serverNames =
+      servers && servers.length > 0 ? servers : await this.listServers();
 
-    // Get tools from all servers or filtered servers
-    let toolsByServer: Record<string, Tool[]>;
+    // Get health status for all servers (single API call)
+    const healthMap = await this.getServerHealth();
 
-    if (servers && servers.length > 0) {
-      // Fetch tools only from specified servers
-      toolsByServer = {};
-      for (const serverName of servers) {
-        toolsByServer[serverName] = await this.#getToolsByServer(serverName);
-      }
-    } else {
-      // Fetch tools from all servers
-      const allServers = await this.listServers();
-      toolsByServer = {};
-      for (const serverName of allServers) {
-        try {
-          toolsByServer[serverName] = await this.#getToolsByServer(serverName);
-        } catch (error) {
-          // If we can't get tools for a server, skip it
-          console.warn(
-            `Failed to get tools for server '${serverName}':`,
-            error,
-          );
-        }
-      }
-    }
+    // Filter to only healthy servers
+    const healthyServers = serverNames.filter((name) => {
+      const health = healthMap[name];
+      return health && HealthStatusHelpers.isHealthy(health.status);
+    });
+
+    // Fetch tools from all healthy servers in parallel
+    const results = await Promise.allSettled(
+      healthyServers.map(async (serverName) => ({
+        serverName,
+        tools: await this.#getToolsByServer(serverName),
+      })),
+    );
 
     // Build functions from tool schemas
-    for (const [serverName, toolSchemas] of Object.entries(toolsByServer)) {
-      for (const toolSchema of toolSchemas) {
-        const func = this.#functionBuilder.createFunctionFromSchema(
-          toolSchema,
-          serverName,
-        );
-        agentTools.push(func);
+    const agentTools: AgentFunction[] = [];
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { serverName, tools } = result.value;
+        for (const toolSchema of tools) {
+          const func = this.#functionBuilder.createFunctionFromSchema(
+            toolSchema,
+            serverName,
+          );
+          agentTools.push(func);
+        }
+      } else {
+        // If we can't get tools for a server, skip it with a warning
+        console.warn(`Failed to get tools for server:`, result.reason);
       }
     }
 
@@ -596,21 +631,26 @@ export class McpdClient {
   /**
    * Generate callable functions for use with AI agent frameworks.
    *
-   * This method queries servers via `getTools()` and creates self-contained,
-   * callable functions that can be passed to AI agent frameworks. Each function
-   * includes its schema as metadata and handles the MCP communication internally.
+   * This method queries servers and creates self-contained, callable functions
+   * that can be passed to AI agent frameworks. Each function includes its schema
+   * as metadata and handles the MCP communication internally.
+   *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching tools. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
    * The generated functions are cached for performance. Use clearAgentToolsCache()
    * to force regeneration if servers or tools have changed.
    *
    * @param options - Options for generating agent tools (format and server filtering)
-   * @returns Functions in the requested format (array, object, or map)
+   * @returns Functions in the requested format (array, object, or map). Only includes tools from healthy servers.
    *
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If requests to the daemon time out
    * @throws {AuthenticationError} If API key authentication fails
-   * @throws {ServerNotFoundError} If a server becomes unavailable during tool retrieval
-   * @throws {McpdError} If unable to retrieve tool definitions or generate functions
+   * @throws {McpdError} If unable to retrieve health status, server list, or generate functions
    *
    * @example
    * ```typescript

@@ -126,10 +126,24 @@ describe("McpdClient", () => {
     it("should return all tools from all servers with transformed names", async () => {
       const mockTools = {
         time: [
-          { name: "get_current_time", description: "Get current time" },
-          { name: "convert_timezone", description: "Convert timezone" },
+          {
+            name: "get_current_time",
+            description: "Get current time",
+            inputSchema: { type: "object" },
+          },
+          {
+            name: "convert_timezone",
+            description: "Convert timezone",
+            inputSchema: { type: "object" },
+          },
         ],
-        math: [{ name: "add", description: "Add two numbers" }],
+        math: [
+          {
+            name: "add",
+            description: "Add two numbers",
+            inputSchema: { type: "object" },
+          },
+        ],
       };
 
       // First call: listServers()
@@ -138,35 +152,35 @@ describe("McpdClient", () => {
         json: async () => ["time", "math"],
       });
 
-      // Second call: health check for 'time'
+      // Second call: health check for all servers (populates cache)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          status: "ok",
-          latency: "2ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "math",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
         }),
       });
 
-      // Third call: tools for 'time'
+      // Third+Fourth calls: tools for 'time' and 'math' (parallel, order may vary)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockTools.time }),
       });
 
-      // Fourth call: health check for 'math'
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          status: "ok",
-          latency: "1ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
-        }),
-      });
-
-      // Fifth call: tools for 'math'
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockTools.math }),
@@ -182,17 +196,28 @@ describe("McpdClient", () => {
 
     it("should filter tools by specified servers", async () => {
       const mockTools = {
-        time: [{ name: "get_current_time", description: "Get current time" }],
+        time: [
+          {
+            name: "get_current_time",
+            description: "Get current time",
+            inputSchema: { type: "object" },
+          },
+        ],
       };
 
-      // First call: health check for 'time'
+      // First call: health check for all servers (populates cache)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          status: "ok",
-          latency: "2ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
         }),
       });
 
@@ -215,17 +240,28 @@ describe("McpdClient", () => {
         json: async () => [],
       });
 
+      // Second call: health check for all servers (empty)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [],
+        }),
+      });
+
       const tools = await client.getToolSchemas();
 
       expect(tools).toHaveLength(0);
     });
 
     it("should skip unhealthy servers and continue", async () => {
-      // Spy on console.warn to suppress output and verify it was called
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
       const mockTools = {
-        time: [{ name: "get_current_time", description: "Get current time" }],
+        time: [
+          {
+            name: "get_current_time",
+            description: "Get current time",
+            inputSchema: { type: "object" },
+          },
+        ],
       };
 
       // First call: listServers()
@@ -234,31 +270,32 @@ describe("McpdClient", () => {
         json: async () => ["time", "unhealthy"],
       });
 
-      // Second call: health check for 'time' (healthy)
+      // Second call: health check for all servers (populates cache)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          status: "ok",
-          latency: "2ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "unhealthy",
+              status: "error",
+              latency: "0ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+            },
+          ],
         }),
       });
 
-      // Third call: tools for 'time'
+      // Third call: tools for 'time' (unhealthy server is filtered out, no request made)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockTools.time }),
-      });
-
-      // Fourth call: health check for 'unhealthy' (fails)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          status: "error",
-          latency: "0ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-        }),
       });
 
       const tools = await client.getToolSchemas();
@@ -266,14 +303,6 @@ describe("McpdClient", () => {
       // Should only get tools from healthy server
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("time__get_current_time");
-
-      // Verify warning was logged
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to get tools for server 'unhealthy'"),
-        expect.any(Error),
-      );
-
-      warnSpy.mockRestore();
     });
   });
 
@@ -413,10 +442,6 @@ describe("McpdClient", () => {
     });
   });
 
-  // Note: #performCall is now truly private and tested indirectly through:
-  // - client.servers.*.tools.* (ToolsProxy)
-  // - client.getAgentTools() (FunctionBuilder)
-
   describe("agentTools()", () => {
     it("should generate callable functions for all tools", async () => {
       const mockAllTools = {
@@ -453,35 +478,35 @@ describe("McpdClient", () => {
         json: async () => ["time", "math"],
       });
 
-      // Second call: health check for 'time'
+      // Second call: health check for all servers (populates cache)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          status: "ok",
-          latency: "2ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "math",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
         }),
       });
 
-      // Third call: tools for 'time'
+      // Third+Fourth calls: tools for 'time' and 'math' (parallel, order may vary)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockAllTools.time }),
       });
 
-      // Fourth call: health check for 'math'
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          status: "ok",
-          latency: "1ms",
-          lastChecked: "2025-10-07T15:00:00Z",
-          lastSuccessful: "2025-10-07T15:00:00Z",
-        }),
-      });
-
-      // Fifth call: tools for 'math'
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ tools: mockAllTools.math }),
@@ -511,6 +536,14 @@ describe("McpdClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [],
+      });
+
+      // Second call: health check for all servers (empty)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [],
+        }),
       });
 
       const tools = await client.getAgentTools({ format: "array" });
