@@ -1,0 +1,29 @@
+{
+  "name": "mcpd-langchain-example",
+  "version": "1.0.0",
+  "description": "Example demonstrating mcpd SDK integration with LangChain",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.0",
+    "@langchain/openai": "^0.3.0",
+    "@mozilla-ai/mcpd": "file:../.."
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcpd",
+    "langchain",
+    "ai",
+    "tools",
+    "example"
+  ],
+  "author": "Mozilla AI",
+  "license": "Apache-2.0"
+}
