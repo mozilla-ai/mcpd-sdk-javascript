@@ -41,7 +41,7 @@ async function main() {
       }
 
       // Check if a tool exists before calling it
-      const hasTool = await client.servers.time.tools.hasTool('get_current_time');
+      const hasTool = await client.servers.time.hasTool('get_current_time');
       console.log(`Has tool 'get_current_time': ${hasTool}`);
 
       if (hasTool) {
@@ -58,7 +58,7 @@ async function main() {
 
         // Alternative: Use callTool() for dynamic tool names
         const toolName = 'get_current_time';
-        const nyTime = await client.servers.time.tools.callTool(toolName, { timezone: 'America/New_York' });
+        const nyTime = await client.servers.time.callTool(toolName, { timezone: 'America/New_York' });
         console.log('New York:');
         console.log(nyTime);
       }

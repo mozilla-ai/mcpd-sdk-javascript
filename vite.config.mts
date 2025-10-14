@@ -6,7 +6,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'McpdSDK',
+      name: 'McpdSdk',
       fileName: (format) => `index.${format === 'es' ? 'mjs' : 'js'}`,
       formats: ['cjs', 'es'],
     },
