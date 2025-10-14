@@ -1,0 +1,22 @@
+{
+  "name": "mcpd-basic-example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Basic example of using the mcpd SDK",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@mozilla-ai/mcpd": "file:../.."
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcpd",
+    "example"
+  ]
+}
