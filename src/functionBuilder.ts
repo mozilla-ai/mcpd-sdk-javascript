@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 import { McpdError, ValidationError } from "./errors";
-import type { ToolSchema, PerformCallFn } from "./types";
+import type { Tool, PerformCallFn } from "./types";
 import { TypeConverter } from "./utils/typeConverter";
 
 /**
@@ -38,7 +38,7 @@ export interface AgentFunction {
   execute: (args: unknown) => Promise<unknown>; // Primary method for Vercel AI SDK
 
   // Internal properties
-  _schema: ToolSchema;
+  _schema: Tool;
   _serverName: string;
   _toolName: string;
 }
@@ -181,10 +181,7 @@ export class FunctionBuilder {
    * @param serverName - The name of the MCP server hosting this tool
    * @returns A callable JavaScript function with metadata
    */
-  createFunctionFromSchema(
-    schema: ToolSchema,
-    serverName: string,
-  ): AgentFunction {
+  createFunctionFromSchema(schema: Tool, serverName: string): AgentFunction {
     const cacheKey = `${serverName}__${schema.name}`;
 
     // Return cached function if it exists
@@ -211,7 +208,7 @@ export class FunctionBuilder {
    * @param serverName - The server name
    * @returns The generated function with metadata
    */
-  private buildFunction(schema: ToolSchema, serverName: string): AgentFunction {
+  private buildFunction(schema: Tool, serverName: string): AgentFunction {
     const inputSchema = schema.inputSchema || {};
     const properties = inputSchema.properties || {};
     const required = new Set(inputSchema.required || []);
@@ -353,7 +350,7 @@ export class FunctionBuilder {
    * @param schema - The MCP tool's JSON Schema definition
    * @returns A multi-line string containing the complete docstring text
    */
-  private createDocstring(schema: ToolSchema): string {
+  private createDocstring(schema: Tool): string {
     const description = schema.description || "No description provided";
     const inputSchema = schema.inputSchema || {};
     const properties = inputSchema.properties || {};

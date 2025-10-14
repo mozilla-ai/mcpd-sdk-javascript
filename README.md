@@ -66,7 +66,7 @@ try {
 ### TypeScript
 
 ```typescript
-import { McpdClient, McpdError, ToolSchema } from "@mozilla-ai/mcpd";
+import { McpdClient, McpdError, Tool } from "@mozilla-ai/mcpd";
 
 const client = new McpdClient({
   apiEndpoint: "http://localhost:8090",
@@ -79,7 +79,7 @@ const client = new McpdClient({
 const servers: string[] = await client.listServers();
 
 // Get tools with proper typing
-const tools: ToolSchema[] = await client.servers.time.listTools();
+const tools: Tool[] = await client.servers.time.listTools();
 
 // Dynamic tool invocation with error handling via .tools namespace
 try {
@@ -170,13 +170,6 @@ const result = await client.servers.weather.tools.get_forecast({
 
 // Call without parameters
 const time = await client.servers.time.tools.get_current_time();
-
-// Alternative: Use callTool() for dynamic tool names
-const toolName = "get_forecast";
-const result2 = await client.servers.weather.tools.callTool(toolName, {
-  city: "London",
-  days: 5,
-});
 ```
 
 #### `client.servers.<server>.listTools()`
@@ -198,21 +191,39 @@ for (const serverName of servers) {
 }
 ```
 
-#### `client.servers.<server>.tools.hasTool(toolName: string)`
+#### `client.servers.<server>.callTool(toolName, args?)`
+
+Call a tool by name with the given arguments. This is useful for programmatic tool invocation when the tool name is in a variable.
+
+```typescript
+// Call with dynamic tool name
+const toolName = "get_current_time";
+const result = await client.servers.time.callTool(toolName, {
+  timezone: "UTC",
+});
+
+// Using with dynamic server name too
+const serverName = "time";
+const result2 = await client.servers[serverName].callTool(toolName, {
+  timezone: "UTC",
+});
+```
+
+#### `client.servers.<server>.hasTool(toolName)`
 
 Check if a specific tool exists on a server. Tool names must match exactly as returned by the MCP server.
 
 ```typescript
 // Check if tool exists before calling it
-if (await client.servers.time.tools.hasTool("get_current_time")) {
-  const result = await client.servers.time.tools.get_current_time({
+if (await client.servers.time.hasTool("get_current_time")) {
+  const result = await client.servers.time.callTool("get_current_time", {
     timezone: "UTC",
   });
 }
 
 // Using with dynamic server names
 const serverName = "time";
-if (await client.servers[serverName].tools.hasTool("get_current_time")) {
+if (await client.servers[serverName].hasTool("get_current_time")) {
   const result = await client.servers[serverName].tools.get_current_time();
 }
 ```
@@ -311,6 +322,16 @@ Clear the cache of generated agent tools functions.
 // Clear cache to regenerate tools with latest schemas
 client.clearAgentToolsCache();
 const freshTools = await client.getAgentTools();
+```
+
+#### `client.clearServerHealthCache()`
+
+Clear the server health cache, forcing fresh health checks on next call.
+
+```typescript
+// Force fresh health check
+client.clearServerHealthCache();
+const health = await client.getServerHealth("time");
 ```
 
 ## Error Handling

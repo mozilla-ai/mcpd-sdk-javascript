@@ -71,39 +71,124 @@ export interface JsonSchema {
 }
 
 /**
- * MCP tool schema definition.
+ * Tool annotations for hints about tool behavior.
  */
-export interface ToolSchema {
-  name: string;
-  description?: string;
-  inputSchema?: JsonSchema;
+export interface ToolAnnotations {
+  title?: string;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+  readOnlyHint?: boolean;
 }
 
 /**
- * Server health information.
+ * MCP tool definition following the Model Context Protocol specification (2025-06-18).
+ *
+ * @see https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/
+ */
+export interface Tool {
+  /**
+   * Unique identifier for the tool (required).
+   */
+  name: string;
+
+  /**
+   * Optional human-readable title for display.
+   */
+  title?: string;
+
+  /**
+   * Human-readable description of what the tool does (optional in MCP spec).
+   *
+   * Note: mcpd API currently requires this field, but MCP spec makes it optional.
+   * This SDK follows the MCP spec to remain protocol-compliant.
+   */
+  description?: string;
+
+  /**
+   * JSON Schema defining the tool's input parameters (required in MCP spec).
+   *
+   * Note: mcpd API currently makes this optional, but MCP spec requires it.
+   * This SDK follows the MCP spec to remain protocol-compliant.
+   */
+  inputSchema: JsonSchema;
+
+  /**
+   * Optional JSON Schema defining the tool's output structure.
+   */
+  outputSchema?: JsonSchema;
+
+  /**
+   * Optional hints about tool behavior (readonly, destructive, idempotent, etc.).
+   */
+  annotations?: ToolAnnotations;
+
+  /**
+   * Optional metadata for extensibility.
+   */
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * Tools list response from the mcpd API.
+ */
+export interface Tools {
+  $schema?: string;
+  tools: Tool[];
+}
+
+/**
+ * Server health information from the mcpd API.
+ * Represents the health status of an MCP server.
  */
 export interface ServerHealth {
+  /**
+   * Name of the server (required).
+   */
+  name: string;
+
+  /**
+   * Health status of the server (required).
+   * Common values: 'ok', 'timeout', 'unreachable', 'unknown'
+   */
   status: string;
-  timestamp?: string;
-  error?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+
+  /**
+   * Optional JSON Schema reference.
+   */
+  $schema?: string;
+
+  /**
+   * Timestamp of the last health check (ISO 8601 date-time).
+   */
+  lastChecked?: string;
+
+  /**
+   * Timestamp of the last successful health check (ISO 8601 date-time).
+   */
+  lastSuccessful?: string;
+
+  /**
+   * Latency of the health check (e.g., '2ms', '1.5s').
+   */
+  latency?: string;
 }
 
 /**
  * Tools response from the mcpd daemon.
  */
 export interface ToolsResponse {
-  tools?: ToolSchema[];
-  [serverName: string]: ToolSchema[] | undefined;
+  tools?: Tool[];
+  [serverName: string]: Tool[] | undefined;
 }
 
 /**
  * Health response from the mcpd API.
+ * Contains health information for all tracked servers.
  */
 export interface HealthResponse {
   $schema?: string;
-  servers: Array<ServerHealth & { name: string }>;
+  servers: ServerHealth[];
 }
 
 /**
@@ -178,4 +263,108 @@ export type PerformCallFn = (
  * This is injected into proxy classes via dependency injection.
  * @internal
  */
-export type GetToolsFn = (serverName: string) => Promise<ToolSchema[]>;
+export type GetToolsFn = (serverName: string) => Promise<Tool[]>;
+
+/**
+ * MCP resource definition.
+ */
+export interface Resource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * Resources list response from the mcpd API.
+ */
+export interface Resources {
+  $schema?: string;
+  resources: Resource[];
+  nextCursor?: string;
+}
+
+/**
+ * Prompt argument definition.
+ */
+export interface PromptArgument {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
+/**
+ * MCP prompt definition.
+ */
+export interface Prompt {
+  name: string;
+  description?: string;
+  arguments?: PromptArgument[];
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * Prompts list response from the mcpd API.
+ */
+export interface Prompts {
+  $schema?: string;
+  prompts: Prompt[];
+  nextCursor?: string;
+}
+
+/**
+ * Prompt message in a generated prompt.
+ */
+export interface PromptMessage {
+  role: string;
+  content: unknown;
+}
+
+/**
+ * Generated prompt response from the mcpd API.
+ */
+export interface GeneratePromptResponseBody {
+  $schema?: string;
+  description?: string;
+  messages: PromptMessage[];
+}
+
+/**
+ * Resource content response from the mcpd API.
+ */
+export interface ResourceContent {
+  uri: string;
+  text?: string;
+  blob?: string;
+  mimeType?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * MCP resource template definition.
+ */
+export interface ResourceTemplate {
+  uriTemplate: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * Resource templates list response from the mcpd API.
+ */
+export interface ResourceTemplates {
+  $schema?: string;
+  templates: ResourceTemplate[];
+  nextCursor?: string;
+}
+
+/**
+ * Arguments for generating a prompt from a template.
+ */
+export interface PromptGenerateArguments {
+  $schema?: string;
+  arguments?: Record<string, string>;
+}

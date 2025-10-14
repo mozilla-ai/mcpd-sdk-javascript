@@ -24,7 +24,7 @@ import {
   HealthStatusHelpers,
   McpdClientOptions,
   ServerHealth,
-  ToolSchema,
+  Tool,
   ToolsResponse,
   HealthResponse,
   ErrorModel,
@@ -281,16 +281,14 @@ export class McpdClient {
    * // This prevents clashes if multiple servers have tools with the same name
    * ```
    */
-  async getToolSchemas(options?: {
-    servers?: string[];
-  }): Promise<ToolSchema[]> {
+  async getToolSchemas(options?: { servers?: string[] }): Promise<Tool[]> {
     const { servers } = options || {};
 
     // Determine which servers to query
     const serverNames =
       servers && servers.length > 0 ? servers : await this.listServers();
 
-    const allTools: ToolSchema[] = [];
+    const allTools: Tool[] = [];
 
     // Fetch tools from each server
     for (const serverName of serverNames) {
@@ -323,7 +321,7 @@ export class McpdClient {
    * @throws {McpdError} If the request fails
    * @internal
    */
-  async #getToolsByServer(serverName: string): Promise<ToolSchema[]> {
+  async #getToolsByServer(serverName: string): Promise<Tool[]> {
     // Check server health first
     await this.#ensureServerHealthy(serverName);
 
@@ -403,8 +401,7 @@ export class McpdClient {
       // Transform array response into Record<string, ServerHealth>
       const healthMap: Record<string, ServerHealth> = {};
       for (const server of response.servers) {
-        const { name, ...health } = server;
-        healthMap[name] = health;
+        healthMap[server.name] = server;
       }
       return healthMap;
     }
@@ -529,6 +526,14 @@ export class McpdClient {
   }
 
   /**
+   * Clear the server health cache.
+   * This forces fresh health checks on the next getServerHealth() or isServerHealthy() call.
+   */
+  clearServerHealthCache(): void {
+    this.#serverHealthCache.clear();
+  }
+
+  /**
    * Generate callable functions for use with AI agent frameworks (internal).
    *
    * This method queries servers via `getTools()` and creates self-contained,
@@ -549,7 +554,7 @@ export class McpdClient {
     const agentTools: AgentFunction[] = [];
 
     // Get tools from all servers or filtered servers
-    let toolsByServer: Record<string, ToolSchema[]>;
+    let toolsByServer: Record<string, Tool[]>;
 
     if (servers && servers.length > 0) {
       // Fetch tools only from specified servers

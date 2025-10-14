@@ -221,6 +221,9 @@ describe("McpdClient", () => {
     });
 
     it("should skip unhealthy servers and continue", async () => {
+      // Spy on console.warn to suppress output and verify it was called
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
       const mockTools = {
         time: [{ name: "get_current_time", description: "Get current time" }],
       };
@@ -263,6 +266,14 @@ describe("McpdClient", () => {
       // Should only get tools from healthy server
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("time__get_current_time");
+
+      // Verify warning was logged
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to get tools for server 'unhealthy'"),
+        expect.any(Error),
+      );
+
+      warnSpy.mockRestore();
     });
   });
 
@@ -290,12 +301,14 @@ describe("McpdClient", () => {
 
       const expectedHealth = {
         time: {
+          name: "time",
           status: "ok",
           latency: "2ms",
           lastChecked: "2025-10-07T15:00:00Z",
           lastSuccessful: "2025-10-07T15:00:00Z",
         },
         fetch: {
+          name: "fetch",
           status: "ok",
           latency: "1ms",
           lastChecked: "2025-10-07T15:00:00Z",

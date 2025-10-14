@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { FunctionBuilder } from "../../src/functionBuilder";
 import { ValidationError } from "../../src/errors";
-import type { ToolSchema, PerformCallFn } from "../../src/types";
+import type { Tool, PerformCallFn } from "../../src/types";
 
 describe("FunctionBuilder", () => {
   let mockPerformCall: PerformCallFn;
@@ -14,7 +14,7 @@ describe("FunctionBuilder", () => {
 
   describe("createFunctionFromSchema", () => {
     it("should create a basic function from schema", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "test_tool",
         description: "A test tool",
         inputSchema: {
@@ -40,9 +40,10 @@ describe("FunctionBuilder", () => {
     });
 
     it("should create function with safe names", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "test-tool@123",
         description: "Test tool",
+        inputSchema: { type: "object" },
       };
 
       const func = builder.createFunctionFromSchema(schema, "test-server");
@@ -51,9 +52,10 @@ describe("FunctionBuilder", () => {
     });
 
     it("should cache functions", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "test_tool",
         description: "Test tool",
+        inputSchema: { type: "object" },
       };
 
       const func1 = builder.createFunctionFromSchema(schema, "test_server");
@@ -64,9 +66,10 @@ describe("FunctionBuilder", () => {
     });
 
     it("should handle functions without input schema", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "simple_tool",
         description: "A simple tool with no parameters",
+        inputSchema: { type: "object" },
       };
 
       const func = builder.createFunctionFromSchema(schema, "server");
@@ -82,7 +85,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should execute function with named parameters", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -105,7 +108,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should execute function with positional parameters", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -128,7 +131,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should validate required parameters", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -149,7 +152,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should validate parameter types", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -174,7 +177,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should handle enum validation", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -198,7 +201,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should filter out null/undefined parameters", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "echo",
         inputSchema: {
           type: "object",
@@ -219,9 +222,10 @@ describe("FunctionBuilder", () => {
     });
 
     it("should handle functions with no parameters", async () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "ping",
         description: "Simple ping function",
+        inputSchema: { type: "object" },
       };
 
       const func = builder.createFunctionFromSchema(schema, "test");
@@ -233,7 +237,11 @@ describe("FunctionBuilder", () => {
 
   describe("cache management", () => {
     it("should clear cache", () => {
-      const schema: ToolSchema = { name: "test", description: "test" };
+      const schema: Tool = {
+        name: "test",
+        description: "test",
+        inputSchema: { type: "object" },
+      };
 
       builder.createFunctionFromSchema(schema, "server1");
       builder.createFunctionFromSchema(schema, "server2");
@@ -246,7 +254,11 @@ describe("FunctionBuilder", () => {
     });
 
     it("should create new functions after cache clear", () => {
-      const schema: ToolSchema = { name: "test", description: "test" };
+      const schema: Tool = {
+        name: "test",
+        description: "test",
+        inputSchema: { type: "object" },
+      };
 
       const func1 = builder.createFunctionFromSchema(schema, "server");
       builder.clearCache();
@@ -259,7 +271,7 @@ describe("FunctionBuilder", () => {
 
   describe("docstring generation", () => {
     it("should generate comprehensive docstring", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "complex_tool",
         description: "A complex tool with parameters",
         inputSchema: {
@@ -287,7 +299,7 @@ describe("FunctionBuilder", () => {
     });
 
     it("should handle missing descriptions", () => {
-      const schema: ToolSchema = {
+      const schema: Tool = {
         name: "minimal_tool",
         inputSchema: {
           type: "object",
