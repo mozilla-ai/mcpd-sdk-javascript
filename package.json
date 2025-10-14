@@ -49,8 +49,7 @@
   },
   "homepage": "https://github.com/mozilla-ai/mcpd-sdk-javascript#readme",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "engines": {
     "node": ">=22.0.0"
