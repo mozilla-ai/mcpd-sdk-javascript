@@ -558,6 +558,346 @@ describe("McpdClient", () => {
       expect(() => client.clearAgentToolsCache()).not.toThrow();
     });
   });
+
+  describe("getPrompts()", () => {
+    it("should return all prompts from all servers with transformed names", async () => {
+      const mockPrompts = {
+        github: [
+          {
+            name: "create_pr",
+            description: "Create a pull request",
+            arguments: [{ name: "title", required: true }],
+          },
+          {
+            name: "close_issue",
+            description: "Close an issue",
+            arguments: [{ name: "number", required: true }],
+          },
+        ],
+        notion: [
+          {
+            name: "create_page",
+            description: "Create a new page",
+            arguments: [{ name: "title", required: true }],
+          },
+        ],
+      };
+
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["github", "notion"],
+      });
+
+      // Second call: health check for all servers
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "github",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "notion",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      // Third+Fourth calls: prompts for 'github' and 'notion' (parallel)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: mockPrompts.github }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: mockPrompts.notion }),
+      });
+
+      const prompts = await client.getPrompts();
+
+      expect(prompts).toHaveLength(3);
+      expect(prompts[0]?.name).toBe("github__create_pr");
+      expect(prompts[1]?.name).toBe("github__close_issue");
+      expect(prompts[2]?.name).toBe("notion__create_page");
+    });
+
+    it("should filter prompts by specified servers", async () => {
+      const mockPrompts = {
+        github: [
+          {
+            name: "create_pr",
+            description: "Create a pull request",
+            arguments: [],
+          },
+        ],
+      };
+
+      // First call: health check for all servers
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "github",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      // Second call: prompts for 'github'
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: mockPrompts.github }),
+      });
+
+      const prompts = await client.getPrompts({ servers: ["github"] });
+
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]?.name).toBe("github__create_pr");
+    });
+
+    it("should return empty array when no prompts available", async () => {
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [],
+      });
+
+      // Second call: health check for all servers (empty)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [],
+        }),
+      });
+
+      const prompts = await client.getPrompts();
+
+      expect(prompts).toHaveLength(0);
+    });
+
+    it("should skip servers that return 501 Not Implemented", async () => {
+      const mockPrompts = {
+        github: [
+          {
+            name: "create_pr",
+            description: "Create a pull request",
+            arguments: [],
+          },
+        ],
+      };
+
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["github", "no-prompts"],
+      });
+
+      // Second call: health check for all servers
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "github",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "no-prompts",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      // Third call: prompts for 'github' (success)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: mockPrompts.github }),
+      });
+
+      // Fourth call: prompts for 'no-prompts' (501 error)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 501,
+        statusText: "Not Implemented",
+        text: async () =>
+          JSON.stringify({
+            detail: "Server does not support prompts",
+            status: 501,
+            title: "Not Implemented",
+            type: "about:blank",
+          }),
+      });
+
+      const prompts = await client.getPrompts();
+
+      // Should only get prompts from server that supports them
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]?.name).toBe("github__create_pr");
+    });
+
+    it("should skip unhealthy servers", async () => {
+      const mockPrompts = {
+        github: [
+          {
+            name: "create_pr",
+            description: "Create a pull request",
+            arguments: [],
+          },
+        ],
+      };
+
+      // First call: listServers()
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["github", "unhealthy"],
+      });
+
+      // Second call: health check for all servers
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "github",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "unhealthy",
+              status: "error",
+              latency: "0ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      // Third call: prompts for 'github' (unhealthy server is filtered out)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: mockPrompts.github }),
+      });
+
+      const prompts = await client.getPrompts();
+
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]?.name).toBe("github__create_pr");
+    });
+  });
+
+  describe("generatePrompt()", () => {
+    it("should generate prompt with arguments", async () => {
+      const mockResponse = {
+        description: "A pull request for fixing a bug",
+        messages: [
+          { role: "user", content: "Create PR: Fix bug" },
+          { role: "assistant", content: "I'll help create that PR" },
+        ],
+      };
+
+      // First call: health check for server
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          name: "github",
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Second call: generate prompt
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client.generatePrompt("github__create_pr", {
+        title: "Fix bug",
+        description: "Fixed the authentication issue",
+      });
+
+      expect(result.description).toBe("A pull request for fixing a bug");
+      expect(result.messages).toHaveLength(2);
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        "http://localhost:8090/api/v1/servers/github/prompts/create_pr",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            arguments: {
+              title: "Fix bug",
+              description: "Fixed the authentication issue",
+            },
+          }),
+        }),
+      );
+    });
+
+    it("should throw error for invalid prompt name format", async () => {
+      await expect(client.generatePrompt("invalid")).rejects.toThrow(
+        "Invalid prompt name format: invalid. Expected format: serverName__promptName",
+      );
+    });
+
+    it("should handle prompt names with underscores", async () => {
+      const mockResponse = {
+        description: "Test prompt",
+        messages: [],
+      };
+
+      // First call: health check
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          name: "github",
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Second call: generate prompt
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      await client.generatePrompt("github__create_pull_request", {
+        title: "Test",
+      });
+
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        "http://localhost:8090/api/v1/servers/github/prompts/create_pull_request",
+        expect.any(Object),
+      );
+    });
+  });
 });
 
 describe("HealthStatusHelpers", () => {

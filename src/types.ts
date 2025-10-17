@@ -266,6 +266,24 @@ export type PerformCallFn = (
 export type GetToolsFn = (serverName: string) => Promise<Tool[]>;
 
 /**
+ * Function signature for getting prompt templates from a server.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type GetPromptsFn = (serverName: string) => Promise<Prompt[]>;
+
+/**
+ * Function signature for generating a prompt from a template.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type GeneratePromptFn = (
+  serverName: string,
+  promptName: string,
+  args?: Record<string, string>,
+) => Promise<GeneratePromptResponseBody>;
+
+/**
  * MCP resource definition.
  */
 export interface Resource {
