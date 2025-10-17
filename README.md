@@ -228,6 +228,108 @@ if (await client.servers[serverName].hasTool("get_current_time")) {
 }
 ```
 
+#### `client.getPrompts(options?)`
+
+Returns prompt schemas from all (or specific) servers with names transformed to `serverName__promptName` format.
+
+**IMPORTANT**: Prompt names are automatically transformed to prevent naming clashes and identify server origin. Original prompt name `create_pr` on server `github` becomes `github__create_pr`.
+
+This is useful for:
+
+- Aggregating prompts from multiple servers
+- Prompt inspection and discovery across all servers
+- Custom tooling that needs raw MCP prompt schemas with unique names
+
+```typescript
+// Get all prompts from all servers
+const allPrompts = await client.getPrompts();
+// Returns: [
+//   { name: "github__create_pr", description: "...", arguments: [...] },
+//   { name: "slack__post_message", description: "...", arguments: [...] }
+// ]
+
+// Get prompts from specific servers only
+const somePrompts = await client.getPrompts({ servers: ["github"] });
+```
+
+#### `client.generatePrompt(namespacedName, args?)`
+
+Generate a prompt by its namespaced name (in `serverName__promptName` format).
+
+```typescript
+// Generate a prompt with namespaced name
+const result = await client.generatePrompt("github__create_pr", {
+  title: "Fix bug",
+  description: "Fixed authentication issue",
+});
+// Returns: { messages: [...], description: "...", ... }
+```
+
+#### `client.servers.<server>.getPrompts()`
+
+Returns prompt schemas for a specific server.
+
+```typescript
+// Get prompts for a specific server
+const githubPrompts = await client.servers.github.getPrompts();
+// Returns: [{ name: 'create_pr', description: '...', arguments: [...] }]
+```
+
+#### `client.servers.<server>.prompts.<prompt>(args)`
+
+Dynamically generate any prompt using natural syntax via the `.prompts` namespace. Prompt names must match exactly as returned by the MCP server.
+
+```typescript
+// Generate a prompt with parameters using property access (recommended)
+const result = await client.servers.github.prompts.create_pr({
+  title: "Fix bug",
+  description: "Fixed authentication issue",
+});
+
+// Generate without parameters (if prompt has no required args)
+const result = await client.servers.templates.prompts.default_template();
+```
+
+#### `client.servers.<server>.generatePrompt(promptName, args?)`
+
+Generate a prompt by name with the given arguments. This is useful for programmatic prompt generation when the prompt name is in a variable.
+
+```typescript
+// Generate with dynamic prompt name
+const promptName = "create_pr";
+const result = await client.servers.github.generatePrompt(promptName, {
+  title: "Fix bug",
+  description: "Fixed authentication issue",
+});
+
+// Using with dynamic server name too
+const serverName = "github";
+const result2 = await client.servers[serverName].generatePrompt(promptName, {
+  title: "Fix bug",
+});
+```
+
+#### `client.servers.<server>.hasPrompt(promptName)`
+
+Check if a specific prompt exists on a server. Prompt names must match exactly as returned by the MCP server.
+
+```typescript
+// Check if prompt exists before generating it
+if (await client.servers.github.hasPrompt("create_pr")) {
+  const result = await client.servers.github.generatePrompt("create_pr", {
+    title: "Fix bug",
+  });
+}
+
+// Using with dynamic server names
+const serverName = "github";
+if (await client.servers[serverName].hasPrompt("create_pr")) {
+  const result = await client.servers[serverName].prompts.create_pr({
+    title: "Fix bug",
+  });
+}
+```
+
 #### `client.getServerHealth(serverName?: string)`
 
 Get health information for one or all servers.

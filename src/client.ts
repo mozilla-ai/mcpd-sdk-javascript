@@ -29,6 +29,10 @@ import {
   HealthResponse,
   ErrorModel,
   AgentToolsOptions,
+  Prompt,
+  Prompts,
+  GeneratePromptResponseBody,
+  PromptGenerateArguments,
 } from "./types";
 import { createCache } from "./utils/cache";
 import { ServersNamespace } from "./dynamicCaller";
@@ -108,6 +112,8 @@ export class McpdClient {
     this.servers = new ServersNamespace(
       this.#performCall.bind(this),
       this.#getToolsByServer.bind(this),
+      this.#generatePromptInternal.bind(this),
+      this.#getPromptsByServer.bind(this),
     );
     this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
@@ -336,6 +342,152 @@ export class McpdClient {
   }
 
   /**
+   * Get prompts from all (or specific) MCP servers with namespaced names.
+   *
+   * IMPORTANT: Prompt names are transformed to `serverName__promptName` format to:
+   * 1. Prevent naming clashes when aggregating prompts from multiple servers
+   * 2. Identify which server each prompt belongs to
+   *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching prompts. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Servers that don't implement prompts (return 501 Not Implemented) are silently
+   * skipped, allowing this method to work with mixed server types.
+   *
+   * Prompt fetches from multiple servers are executed concurrently for optimal performance.
+   *
+   * @param options - Optional configuration
+   * @param options.servers - Array of server names to include. If not specified, includes all servers.
+   * @returns Array of prompt schemas with transformed names (serverName__promptName). Only includes prompts from healthy servers that support them.
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If requests to the daemon time out
+   * @throws {AuthenticationError} If API key authentication fails
+   * @throws {McpdError} If health check or initial server listing fails
+   *
+   * @example
+   * ```typescript
+   * // Get all prompts from all servers
+   * const allPrompts = await client.getPrompts();
+   * // Returns: [
+   * //   { name: "github__create_pr", description: "...", arguments: [...] },
+   * //   { name: "notion__create_page", description: "...", arguments: [...] }
+   * // ]
+   *
+   * // Get prompts from specific servers only
+   * const somePrompts = await client.getPrompts({ servers: ['github', 'notion'] });
+   *
+   * // Original prompt name "create_pr" becomes "github__create_pr"
+   * // This prevents clashes if multiple servers have prompts with the same name
+   * ```
+   */
+  async getPrompts(options?: { servers?: string[] }): Promise<Prompt[]> {
+    const { servers } = options || {};
+
+    // Determine which servers to query.
+    const serverNames =
+      servers && servers.length > 0 ? servers : await this.listServers();
+
+    // Get health status for all servers.
+    const healthMap = await this.getServerHealth();
+
+    // Filter to only healthy servers.
+    const healthyServers = serverNames.filter((name) => {
+      const health = healthMap[name];
+      return health && HealthStatusHelpers.isHealthy(health.status);
+    });
+
+    // Fetch prompts from all healthy servers in parallel.
+    const results = await Promise.allSettled(
+      healthyServers.map(async (serverName) => ({
+        serverName,
+        prompts: await this.#getPromptsByServer(serverName),
+      })),
+    );
+
+    // Process results and transform prompt names.
+    const allPrompts: Prompt[] = [];
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { serverName, prompts } = result.value;
+        // Transform prompt names to serverName__promptName format.
+        for (const prompt of prompts) {
+          allPrompts.push({
+            ...prompt,
+            name: `${serverName}__${prompt.name}`,
+          });
+        }
+      } else {
+        // If we can't get prompts for a server, skip it with a warning.
+        console.warn(`Failed to get prompts for server:`, result.reason);
+      }
+    }
+
+    return allPrompts;
+  }
+
+  /**
+   * Generate a prompt from a template with the given arguments.
+   *
+   * IMPORTANT: The promptName must be in the format `serverName__promptName`.
+   * This is the same format returned by getPrompts().
+   *
+   * @param promptName - The fully qualified prompt name (serverName__promptName)
+   * @param args - Arguments to pass to the prompt template
+   * @returns The generated prompt response with description and messages
+   * @throws {Error} If the prompt name format is invalid
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   *
+   * @example
+   * ```typescript
+   * // First, get available prompts
+   * const prompts = await client.getPrompts();
+   * // prompts = [{ name: "github__create_pr", ... }]
+   *
+   * // Generate a prompt
+   * const result = await client.generatePrompt("github__create_pr", {
+   *   title: "Fix bug",
+   *   description: "Fixed the authentication issue"
+   * });
+   * console.log(result.messages); // Array of prompt messages
+   * ```
+   */
+  async generatePrompt(
+    promptName: string,
+    args?: Record<string, string>,
+  ): Promise<GeneratePromptResponseBody> {
+    // Parse the serverName__promptName format.
+    const parts = promptName.split("__");
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      throw new Error(
+        `Invalid prompt name format: ${promptName}. Expected format: serverName__promptName`,
+      );
+    }
+
+    const serverName: string = parts[0];
+    const actualPromptName: string = parts.slice(1).join("__");
+
+    // Check server health first.
+    await this.#ensureServerHealthy(serverName);
+
+    const path = API_PATHS.PROMPT_GET_GENERATED(serverName, actualPromptName);
+    const requestBody: PromptGenerateArguments = {
+      arguments: args || {},
+    };
+
+    const response = await this.#request<GeneratePromptResponseBody>(path, {
+      method: "POST",
+      body: JSON.stringify(requestBody),
+    });
+
+    return response;
+  }
+
+  /**
    * Internal method to get tool schemas for a server.
    * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
@@ -363,6 +515,83 @@ export class McpdClient {
     }
 
     return response.tools;
+  }
+
+  /**
+   * Internal method to get prompt schemas for a server.
+   * Used internally for getPromptSchemas.
+   *
+   * @param serverName - Server name to get prompts for
+   * @param cursor - Optional cursor for pagination
+   * @returns Prompt schemas for the specified server
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #getPromptsByServer(
+    serverName: string,
+    cursor?: string,
+  ): Promise<Prompt[]> {
+    // Check server health first.
+    await this.#ensureServerHealthy(serverName);
+
+    const path = API_PATHS.SERVER_PROMPTS(serverName, cursor);
+
+    try {
+      const response = await this.#request<Prompts>(path);
+      return response.prompts || [];
+    } catch (error) {
+      // Handle 501 Not Implemented - server doesn't support prompts.
+      if (
+        error instanceof McpdError &&
+        error.message.includes("501") &&
+        error.message.includes("Not Implemented")
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method to generate a prompt on a server.
+   *
+   * ⚠️ This method is truly private and cannot be accessed by SDK consumers.
+   * Use the fluent API instead: `client.servers.foo.prompts.bar(args)`
+   *
+   * This method is used internally by:
+   * - PromptsNamespace (via dependency injection)
+   * - Server.getPrompt() (via dependency injection)
+   *
+   * @param serverName - The name of the server
+   * @param promptName - The exact name of the prompt
+   * @param args - The prompt arguments
+   * @returns The generated prompt response
+   * @internal
+   */
+  async #generatePromptInternal(
+    serverName: string,
+    promptName: string,
+    args?: Record<string, string>,
+  ): Promise<GeneratePromptResponseBody> {
+    // Check server health first.
+    await this.#ensureServerHealthy(serverName);
+
+    const path = API_PATHS.PROMPT_GET_GENERATED(serverName, promptName);
+    const requestBody: PromptGenerateArguments = {
+      arguments: args || {},
+    };
+
+    const response = await this.#request<GeneratePromptResponseBody>(path, {
+      method: "POST",
+      body: JSON.stringify(requestBody),
+    });
+
+    return response;
   }
 
   /**

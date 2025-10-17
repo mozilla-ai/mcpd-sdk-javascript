@@ -14,7 +14,15 @@
  */
 
 import { ToolNotFoundError } from "./errors";
-import type { Tool, PerformCallFn, GetToolsFn } from "./types";
+import type {
+  Tool,
+  Prompt,
+  GeneratePromptResponseBody,
+  PerformCallFn,
+  GetToolsFn,
+  GetPromptsFn,
+  GeneratePromptFn,
+} from "./types";
 
 /**
  * Namespace for accessing MCP servers via proxy.
@@ -40,16 +48,27 @@ export class ServersNamespace {
 
   #performCall: PerformCallFn;
   #getTools: GetToolsFn;
+  #generatePrompt: GeneratePromptFn;
+  #getPrompts: GetPromptsFn;
 
   /**
    * Initialize the ServersNamespace with injected functions.
    *
    * @param performCall - Function to execute tool calls
    * @param getTools - Function to get tool schemas
+   * @param generatePrompt - Function to generate prompts
+   * @param getPrompts - Function to get prompt schemas
    */
-  constructor(performCall: PerformCallFn, getTools: GetToolsFn) {
+  constructor(
+    performCall: PerformCallFn,
+    getTools: GetToolsFn,
+    generatePrompt: GeneratePromptFn,
+    getPrompts: GetPromptsFn,
+  ) {
     this.#performCall = performCall;
     this.#getTools = getTools;
+    this.#generatePrompt = generatePrompt;
+    this.#getPrompts = getPrompts;
 
     // Return a Proxy to intercept property access
     return new Proxy(this, {
@@ -57,7 +76,13 @@ export class ServersNamespace {
         if (typeof serverName !== "string") {
           return undefined;
         }
-        return new Server(target.#performCall, target.#getTools, serverName);
+        return new Server(
+          target.#performCall,
+          target.#getTools,
+          target.#generatePrompt,
+          target.#getPrompts,
+          serverName,
+        );
       },
     });
   }
@@ -83,9 +108,12 @@ export class ServersNamespace {
  */
 export class Server {
   readonly tools: ToolsNamespace;
+  readonly prompts: PromptsNamespace;
 
   #performCall: PerformCallFn;
   #getTools: GetToolsFn;
+  #generatePrompt: GeneratePromptFn;
+  #getPrompts: GetPromptsFn;
   #serverName: string;
 
   /**
@@ -93,21 +121,34 @@ export class Server {
    *
    * @param performCall - Function to execute tool calls
    * @param getTools - Function to get tool schemas
+   * @param generatePrompt - Function to generate prompts
+   * @param getPrompts - Function to get prompt schemas
    * @param serverName - The name of the MCP server
    */
   constructor(
     performCall: PerformCallFn,
     getTools: GetToolsFn,
+    generatePrompt: GeneratePromptFn,
+    getPrompts: GetPromptsFn,
     serverName: string,
   ) {
     this.#performCall = performCall;
     this.#getTools = getTools;
+    this.#generatePrompt = generatePrompt;
+    this.#getPrompts = getPrompts;
     this.#serverName = serverName;
 
     // Create the tools namespace as a real property.
     this.tools = new ToolsNamespace(
       this.#performCall,
       this.#getTools,
+      this.#serverName,
+    );
+
+    // Create the prompts namespace as a real property.
+    this.prompts = new PromptsNamespace(
+      this.#generatePrompt,
+      this.#getPrompts,
       this.#serverName,
     );
   }
@@ -197,6 +238,92 @@ export class Server {
     // Perform the tool call
     return this.#performCall(this.#serverName, toolName, args);
   }
+
+  /**
+   * Get all prompts available on this server.
+   *
+   * @returns Array of prompt schemas
+   * @throws {ServerNotFoundError} If the server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is unhealthy
+   *
+   * @example
+   * ```typescript
+   * const prompts = await client.servers.github.getPrompts();
+   * for (const prompt of prompts) {
+   *   console.log(`${prompt.name}: ${prompt.description}`);
+   * }
+   * ```
+   */
+  async getPrompts(): Promise<Prompt[]> {
+    return this.#getPrompts(this.#serverName);
+  }
+
+  /**
+   * Check if a prompt exists on this server.
+   *
+   * The prompt name must match exactly as returned by the server.
+   *
+   * @param promptName - The exact name of the prompt to check
+   * @returns True if the prompt exists, false otherwise
+   *
+   * @example
+   * ```typescript
+   * if (await client.servers.github.hasPrompt('create_pr')) {
+   *   const result = await client.servers.github.generatePrompt('create_pr', { title: 'Fix bug' });
+   * }
+   * ```
+   */
+  async hasPrompt(promptName: string): Promise<boolean> {
+    try {
+      const prompts = await this.#getPrompts(this.#serverName);
+      return prompts.some((p) => p.name === promptName);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Generate a prompt by name with the given arguments.
+   *
+   * This method is useful for programmatic prompt generation when the prompt name
+   * is in a variable. The prompt name must match exactly as returned by the server.
+   *
+   * @param promptName - The exact name of the prompt to generate
+   * @param args - The arguments to pass to the prompt template
+   * @returns The generated prompt response
+   * @throws {ToolNotFoundError} If the prompt doesn't exist on the server
+   *
+   * @example
+   * ```typescript
+   * // Call with explicit method (useful for dynamic prompt names):
+   * const promptName = 'create_pr';
+   * await client.servers.github.generatePrompt(promptName, { title: 'Fix bug' });
+   *
+   * // Or with dynamic server name:
+   * const serverName = 'github';
+   * await client.servers[serverName].generatePrompt(promptName, { title: 'Fix bug' });
+   * ```
+   */
+  async generatePrompt(
+    promptName: string,
+    args?: Record<string, string>,
+  ): Promise<GeneratePromptResponseBody> {
+    // Check if the prompt exists (exact match only).
+    const prompts = await this.#getPrompts(this.#serverName);
+    const prompt = prompts.find((p) => p.name === promptName);
+
+    if (!prompt) {
+      throw new ToolNotFoundError(
+        `Prompt '${promptName}' not found on server '${this.#serverName}'. ` +
+          `Use client.servers.${this.#serverName}.getPrompts() to see available prompts.`,
+        this.#serverName,
+        promptName,
+      );
+    }
+
+    // Generate the prompt.
+    return this.#generatePrompt(this.#serverName, promptName, args);
+  }
 }
 
 /**
@@ -265,6 +392,83 @@ export class ToolsNamespace {
 
           // Perform the tool call
           return target.#performCall(target.#serverName, toolName, args);
+        };
+      },
+    });
+  }
+}
+
+/**
+ * Namespace for accessing prompts on a specific MCP server via proxy.
+ *
+ * This class provides the `.prompts` namespace for a server, allowing you to generate
+ * prompts as if they were methods. All prompt names must match exactly as returned
+ * by the MCP server.
+ *
+ * NOTE: Use `client.servers.foo.generatePrompt()` and `client.servers.foo.hasPrompt()`
+ * instead of putting them in the `.prompts` namespace to avoid collisions with
+ * actual prompts named "generatePrompt" or "hasPrompt".
+ *
+ * @example
+ * ```typescript
+ * // Generate prompts via .prompts namespace with static names
+ * const result = await client.servers.github.prompts.create_pr({
+ *   title: "Fix bug",
+ *   description: "Fixed auth issue"
+ * });
+ * ```
+ */
+export class PromptsNamespace {
+  [promptName: string]: (
+    args?: Record<string, string>,
+  ) => Promise<GeneratePromptResponseBody>;
+
+  #generatePrompt: GeneratePromptFn;
+  #getPrompts: GetPromptsFn;
+  #serverName: string;
+
+  /**
+   * Initialize a PromptsNamespace for a specific server.
+   *
+   * @param generatePrompt - Function to generate prompts
+   * @param getPrompts - Function to get prompt schemas
+   * @param serverName - The name of the MCP server
+   */
+  constructor(
+    generatePrompt: GeneratePromptFn,
+    getPrompts: GetPromptsFn,
+    serverName: string,
+  ) {
+    this.#generatePrompt = generatePrompt;
+    this.#getPrompts = getPrompts;
+    this.#serverName = serverName;
+
+    // Return a Proxy to intercept method calls.
+    return new Proxy(this, {
+      get: (target, prop: string | symbol) => {
+        if (typeof prop !== "string") {
+          return undefined;
+        }
+
+        // Return a function that will generate the prompt with exact name matching.
+        return async (args?: Record<string, string>) => {
+          const promptName = prop;
+
+          // Check if the prompt exists (exact match only).
+          const prompts = await target.#getPrompts(target.#serverName);
+          const prompt = prompts.find((p) => p.name === promptName);
+
+          if (!prompt) {
+            throw new ToolNotFoundError(
+              `Prompt '${promptName}' not found on server '${target.#serverName}'. ` +
+                `Use client.servers.${target.#serverName}.getPrompts() to see available prompts.`,
+              target.#serverName,
+              promptName,
+            );
+          }
+
+          // Generate the prompt.
+          return target.#generatePrompt(target.#serverName, promptName, args);
         };
       },
     });

@@ -17,6 +17,14 @@ export const API_PATHS = {
   TOOL_CALL: (serverName: string, toolName: string) =>
     `${SERVERS_BASE}/${encodeURIComponent(serverName)}/tools/${encodeURIComponent(toolName)}`,
 
+  // Prompts
+  SERVER_PROMPTS: (serverName: string, cursor?: string) => {
+    const base = `${SERVERS_BASE}/${encodeURIComponent(serverName)}/prompts`;
+    return cursor ? `${base}?cursor=${encodeURIComponent(cursor)}` : base;
+  },
+  PROMPT_GET_GENERATED: (serverName: string, promptName: string) =>
+    `${SERVERS_BASE}/${encodeURIComponent(serverName)}/prompts/${encodeURIComponent(promptName)}`,
+
   // Health
   HEALTH_ALL: HEALTH_SERVERS_BASE,
   HEALTH_SERVER: (serverName: string) =>
