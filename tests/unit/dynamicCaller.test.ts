@@ -523,4 +523,242 @@ describe("Dynamic Calling Patterns", () => {
       });
     });
   });
+
+  describe("Prompt Dynamic Calling Patterns", () => {
+    describe("Pattern: client.servers.foo.getPrompts()", () => {
+      it("should list prompts with static property access", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [
+              { name: "create_pr", description: "Create PR" },
+              { name: "close_issue", description: "Close issue" },
+            ],
+          }),
+        });
+
+        const prompts = await client.servers.github!.getPrompts();
+
+        expect(prompts).toHaveLength(2);
+        expect(prompts[0]?.name).toBe("create_pr");
+        expect(prompts[1]?.name).toBe("close_issue");
+      });
+    });
+
+    describe("Pattern: client.servers.foo!.prompts.bar!(args)", () => {
+      it("should generate prompt with static property access", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [
+              {
+                name: "create_pr",
+                description: "Create PR",
+                arguments: [{ name: "title", required: true }],
+              },
+            ],
+          }),
+        });
+
+        // Prompt generation (health check is cached from above).
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: "PR for bug fix",
+            messages: [{ role: "user", content: "Create PR: Fix bug" }],
+          }),
+        });
+
+        const result = await client.servers.github!.prompts.create_pr!({
+          title: "Fix bug",
+        });
+
+        expect(result.description).toBe("PR for bug fix");
+        expect(result.messages).toHaveLength(1);
+        expect(mockFetch).toHaveBeenCalledWith(
+          "http://localhost:8090/api/v1/servers/github/prompts/create_pr",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({ arguments: { title: "Fix bug" } }),
+          }),
+        );
+      });
+
+      it("should throw ToolNotFoundError for non-existent prompt", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list (no prompts).
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [],
+          }),
+        });
+
+        await expect(
+          client.servers.github!.prompts.nonexistent_prompt!(),
+        ).rejects.toThrow(ToolNotFoundError);
+      });
+    });
+
+    describe("Pattern: client.servers.foo.generatePrompt(name, args)", () => {
+      it("should generate prompt with dynamic prompt name", async () => {
+        const promptName = "create_pr";
+
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [
+              {
+                name: "create_pr",
+                description: "Create PR",
+                arguments: [{ name: "title", required: true }],
+              },
+            ],
+          }),
+        });
+
+        // Prompt generation (health check is cached from above).
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: "PR for bug fix",
+            messages: [{ role: "user", content: "Create PR: Fix bug" }],
+          }),
+        });
+
+        const result = await client.servers.github!.generatePrompt(promptName, {
+          title: "Fix bug",
+        });
+
+        expect(result.description).toBe("PR for bug fix");
+        expect(result.messages).toHaveLength(1);
+      });
+
+      it("should throw ToolNotFoundError for non-existent prompt", async () => {
+        const promptName = "nonexistent_prompt";
+
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list (no matching prompt).
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [{ name: "create_pr", description: "Create PR" }],
+          }),
+        });
+
+        await expect(
+          client.servers.github!.generatePrompt(promptName),
+        ).rejects.toThrow(ToolNotFoundError);
+      });
+    });
+
+    describe("Pattern: client.servers.foo.hasPrompt(name)", () => {
+      it("should return true when prompt exists", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [{ name: "create_pr", description: "Create PR" }],
+          }),
+        });
+
+        const exists = await client.servers.github!.hasPrompt("create_pr");
+
+        expect(exists).toBe(true);
+      });
+
+      it("should return false when prompt does not exist", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Prompts list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            prompts: [{ name: "create_pr", description: "Create PR" }],
+          }),
+        });
+
+        const exists =
+          await client.servers.github!.hasPrompt("nonexistent_prompt");
+
+        expect(exists).toBe(false);
+      });
+    });
+  });
 });
