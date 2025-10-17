@@ -17,11 +17,17 @@ import { ToolNotFoundError } from "./errors";
 import type {
   Tool,
   Prompt,
+  Resource,
+  ResourceTemplate,
+  ResourceContent,
   GeneratePromptResponseBody,
   PerformCallFn,
   GetToolsFn,
   GetPromptsFn,
   GeneratePromptFn,
+  GetResourcesFn,
+  GetResourceTemplatesFn,
+  ReadResourceFn,
 } from "./types";
 
 /**
@@ -50,6 +56,9 @@ export class ServersNamespace {
   #getTools: GetToolsFn;
   #generatePrompt: GeneratePromptFn;
   #getPrompts: GetPromptsFn;
+  #getResources: GetResourcesFn;
+  #getResourceTemplates: GetResourceTemplatesFn;
+  #readResource: ReadResourceFn;
 
   /**
    * Initialize the ServersNamespace with injected functions.
@@ -59,22 +68,34 @@ export class ServersNamespace {
    * @param options.getTools - Function to get tool schemas
    * @param options.generatePrompt - Function to generate prompts
    * @param options.getPrompts - Function to get prompt schemas
+   * @param options.getResources - Function to get resources
+   * @param options.getResourceTemplates - Function to get resource templates
+   * @param options.readResource - Function to read resource content
    */
   constructor({
     performCall,
     getTools,
     generatePrompt,
     getPrompts,
+    getResources,
+    getResourceTemplates,
+    readResource,
   }: {
     performCall: PerformCallFn;
     getTools: GetToolsFn;
     generatePrompt: GeneratePromptFn;
     getPrompts: GetPromptsFn;
+    getResources: GetResourcesFn;
+    getResourceTemplates: GetResourceTemplatesFn;
+    readResource: ReadResourceFn;
   }) {
     this.#performCall = performCall;
     this.#getTools = getTools;
     this.#generatePrompt = generatePrompt;
     this.#getPrompts = getPrompts;
+    this.#getResources = getResources;
+    this.#getResourceTemplates = getResourceTemplates;
+    this.#readResource = readResource;
 
     // Return a Proxy to intercept property access
     return new Proxy(this, {
@@ -87,6 +108,9 @@ export class ServersNamespace {
           target.#getTools,
           target.#generatePrompt,
           target.#getPrompts,
+          target.#getResources,
+          target.#getResourceTemplates,
+          target.#readResource,
           serverName,
         );
       },
@@ -120,6 +144,9 @@ export class Server {
   #getTools: GetToolsFn;
   #generatePrompt: GeneratePromptFn;
   #getPrompts: GetPromptsFn;
+  #getResources: GetResourcesFn;
+  #getResourceTemplates: GetResourceTemplatesFn;
+  #readResource: ReadResourceFn;
   #serverName: string;
 
   /**
@@ -129,6 +156,9 @@ export class Server {
    * @param getTools - Function to get tool schemas
    * @param generatePrompt - Function to generate prompts
    * @param getPrompts - Function to get prompt schemas
+   * @param getResources - Function to get resources
+   * @param getResourceTemplates - Function to get resource templates
+   * @param readResource - Function to read resource content
    * @param serverName - The name of the MCP server
    */
   constructor(
@@ -136,12 +166,18 @@ export class Server {
     getTools: GetToolsFn,
     generatePrompt: GeneratePromptFn,
     getPrompts: GetPromptsFn,
+    getResources: GetResourcesFn,
+    getResourceTemplates: GetResourceTemplatesFn,
+    readResource: ReadResourceFn,
     serverName: string,
   ) {
     this.#performCall = performCall;
     this.#getTools = getTools;
     this.#generatePrompt = generatePrompt;
     this.#getPrompts = getPrompts;
+    this.#getResources = getResources;
+    this.#getResourceTemplates = getResourceTemplates;
+    this.#readResource = readResource;
     this.#serverName = serverName;
 
     // Create the tools namespace as a real property.
@@ -345,6 +381,106 @@ export class Server {
 
     // Generate the prompt.
     return this.#generatePrompt(this.#serverName, promptName, args);
+  }
+
+  /**
+   * Get all resources available on this server.
+   *
+   * Note: This method is marked `async` for consistency with other server methods,
+   * even though it doesn't directly await. This maintains a uniform async interface
+   * and allows for future enhancements without breaking the API contract.
+   *
+   * @returns Array of resource schemas with original names
+   * @throws {ServerNotFoundError} If the server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is unhealthy
+   *
+   * @example
+   * ```typescript
+   * const resources = await client.servers.github.getResources();
+   * for (const resource of resources) {
+   *   console.log(`${resource.name}: ${resource.uri}`);
+   * }
+   * ```
+   */
+  async getResources(): Promise<Resource[]> {
+    return this.#getResources(this.#serverName);
+  }
+
+  /**
+   * Get all resource templates available on this server.
+   *
+   * Note: This method is marked `async` for consistency with other server methods,
+   * even though it doesn't directly await. This maintains a uniform async interface
+   * and allows for future enhancements without breaking the API contract.
+   *
+   * @returns Array of resource template schemas with original names
+   * @throws {ServerNotFoundError} If the server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is unhealthy
+   *
+   * @example
+   * ```typescript
+   * const templates = await client.servers.github.getResourceTemplates();
+   * for (const template of templates) {
+   *   console.log(`${template.name}: ${template.uriTemplate}`);
+   * }
+   * ```
+   */
+  async getResourceTemplates(): Promise<ResourceTemplate[]> {
+    return this.#getResourceTemplates(this.#serverName);
+  }
+
+  /**
+   * Check if a resource exists on this server.
+   *
+   * The resource URI must match exactly as returned by the server.
+   *
+   * This method is designed as a safe boolean predicate - it catches all errors
+   * (ServerNotFoundError, ServerUnhealthyError, ConnectionError, etc.) and returns
+   * false rather than throwing. This makes it safe to use in conditional checks
+   * without requiring error handling.
+   *
+   * @param uri - The exact URI of the resource to check
+   * @returns True if the resource exists, false otherwise (including on errors)
+   *
+   * @example
+   * ```typescript
+   * if (await client.servers.github.hasResource('file:///repo/README.md')) {
+   *   const content = await client.servers.github.readResource('file:///repo/README.md');
+   * }
+   * ```
+   */
+  async hasResource(uri: string): Promise<boolean> {
+    try {
+      const resources = await this.#getResources(this.#serverName);
+      return resources.some((r) => r.uri === uri);
+    } catch {
+      // Return false on any error to provide a safe boolean predicate.
+      return false;
+    }
+  }
+
+  /**
+   * Read resource content by URI from this server.
+   *
+   * @param uri - The resource URI
+   * @returns Array of resource contents (text or blob)
+   * @throws {ServerNotFoundError} If the server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is unhealthy
+   *
+   * @example
+   * ```typescript
+   * const contents = await client.servers.github.readResource('file:///repo/README.md');
+   * for (const content of contents) {
+   *   if (content.text) {
+   *     console.log(content.text);
+   *   } else if (content.blob) {
+   *     console.log('Binary content:', content.blob.substring(0, 50) + '...');
+   *   }
+   * }
+   * ```
+   */
+  async readResource(uri: string): Promise<ResourceContent[]> {
+    return this.#readResource(this.#serverName, uri);
   }
 }
 

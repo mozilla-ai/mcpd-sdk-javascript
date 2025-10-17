@@ -330,6 +330,142 @@ if (await client.servers[serverName].hasPrompt("create_pr")) {
 }
 ```
 
+#### `client.getResources(options?)`
+
+Returns resource schemas from all (or specific) servers with names transformed to `serverName__resourceName` format.
+
+**IMPORTANT**: Resource names are automatically transformed to prevent naming clashes and identify server origin. Original resource name `readme` on server `github` becomes `github__readme`.
+
+This is useful for:
+
+- Aggregating resources from multiple servers
+- Resource inspection and discovery across all servers
+- Custom tooling that needs raw MCP resource schemas with unique names
+
+```typescript
+// Get all resources from all servers
+const allResources = await client.getResources();
+// Returns: [
+//   { name: "github__readme", uri: "file:///repo/README.md", _serverName: "github", ... },
+//   { name: "slack__channels", uri: "slack://channels", _serverName: "slack", ... }
+// ]
+
+// Get resources from specific servers only
+const someResources = await client.getResources({ servers: ["github"] });
+```
+
+#### `client.getResourceTemplates(options?)`
+
+Returns resource template schemas from all (or specific) servers with names transformed to `serverName__templateName` format.
+
+**IMPORTANT**: Template names are automatically transformed to prevent naming clashes and identify server origin. Original template name `file` on server `github` becomes `github__file`.
+
+This is useful for:
+
+- Aggregating resource templates from multiple servers
+- Template inspection and discovery across all servers
+- Understanding what parameterized resources are available
+
+```typescript
+// Get all resource templates from all servers
+const allTemplates = await client.getResourceTemplates();
+// Returns: [
+//   { name: "github__file", uriTemplate: "file:///{path}", _serverName: "github", ... }
+// ]
+
+// Get templates from specific servers only
+const someTemplates = await client.getResourceTemplates({
+  servers: ["github"],
+});
+```
+
+#### `client.readResource(namespacedName)`
+
+Read resource content by its namespaced name (in `serverName__resourceName` format).
+
+The SDK automatically populates an internal cache on first use. For better performance when reading multiple resources, you can optionally pre-populate the cache by calling `getResources()` first.
+
+```typescript
+// Read content by namespaced name - cache populated automatically if needed
+const contents = await client.readResource("github__readme");
+// Returns: [{ uri: "...", text: "# README\n...", mimeType: "text/markdown" }]
+
+for (const content of contents) {
+  if (content.text) {
+    console.log("Text content:", content.text);
+  } else if (content.blob) {
+    console.log(
+      "Binary content (base64):",
+      content.blob.substring(0, 50) + "...",
+    );
+  }
+}
+
+// For better performance when reading multiple resources, pre-populate the cache
+await client.getResources();
+const readme = await client.readResource("github__readme");
+const changelog = await client.readResource("github__changelog");
+```
+
+#### `client.servers.<server>.getResources()`
+
+Returns resource schemas for a specific server.
+
+```typescript
+// Get resources for a specific server
+const githubResources = await client.servers.github.getResources();
+// Returns: [{ name: 'readme', uri: 'file:///repo/README.md', ... }]
+```
+
+#### `client.servers.<server>.getResourceTemplates()`
+
+Returns resource template schemas for a specific server.
+
+```typescript
+// Get resource templates for a specific server
+const githubTemplates = await client.servers.github.getResourceTemplates();
+// Returns: [{ name: 'file', uriTemplate: 'file:///{path}', ... }]
+```
+
+#### `client.servers.<server>.readResource(uri)`
+
+Read resource content by URI from a specific server.
+
+```typescript
+// Read resource content by URI
+const contents = await client.servers.github.readResource(
+  "file:///repo/README.md",
+);
+for (const content of contents) {
+  if (content.text) {
+    console.log(content.text);
+  } else if (content.blob) {
+    console.log("Binary content (base64):", content.blob);
+  }
+}
+```
+
+#### `client.servers.<server>.hasResource(uri)`
+
+Check if a specific resource exists on a server. Resource URIs must match exactly as returned by the MCP server.
+
+```typescript
+// Check if resource exists before reading it
+if (await client.servers.github.hasResource("file:///repo/README.md")) {
+  const contents = await client.servers.github.readResource(
+    "file:///repo/README.md",
+  );
+}
+
+// Using with dynamic server names
+const serverName = "github";
+if (await client.servers[serverName].hasResource("file:///repo/README.md")) {
+  const contents = await client.servers[serverName].readResource(
+    "file:///repo/README.md",
+  );
+}
+```
+
 #### `client.getServerHealth(serverName?: string)`
 
 Get health information for one or all servers.

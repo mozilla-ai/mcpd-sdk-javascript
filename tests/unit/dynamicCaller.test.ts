@@ -761,4 +761,242 @@ describe("Dynamic Calling Patterns", () => {
       });
     });
   });
+
+  describe("Resource Dynamic Calling Patterns", () => {
+    describe("Pattern: client.servers.foo.getResources()", () => {
+      it("should list resources with static property access", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resources list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            resources: [
+              {
+                name: "readme",
+                uri: "file:///repo/README.md",
+                description: "Project readme",
+                mimeType: "text/markdown",
+              },
+              {
+                name: "changelog",
+                uri: "file:///repo/CHANGELOG.md",
+                mimeType: "text/markdown",
+              },
+            ],
+          }),
+        });
+
+        const resources = await client.servers.github!.getResources();
+
+        expect(resources).toHaveLength(2);
+        expect(resources[0]?.name).toBe("readme");
+        expect(resources[0]?.uri).toBe("file:///repo/README.md");
+        expect(resources[1]?.name).toBe("changelog");
+      });
+    });
+
+    describe("Pattern: client.servers.foo.getResourceTemplates()", () => {
+      it("should list resource templates with static property access", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resource templates list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            templates: [
+              {
+                name: "file",
+                uriTemplate: "file:///{path}",
+                description: "Access any file",
+                mimeType: "text/plain",
+              },
+            ],
+          }),
+        });
+
+        const templates = await client.servers.github!.getResourceTemplates();
+
+        expect(templates).toHaveLength(1);
+        expect(templates[0]?.name).toBe("file");
+        expect(templates[0]?.uriTemplate).toBe("file:///{path}");
+      });
+    });
+
+    describe("Pattern: client.servers.foo.readResource(uri)", () => {
+      it("should read resource content by URI", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resource content.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [
+            {
+              uri: "file:///repo/README.md",
+              text: "# My Project\n\nThis is a readme.",
+              mimeType: "text/markdown",
+            },
+          ],
+        });
+
+        const contents = await client.servers.github!.readResource(
+          "file:///repo/README.md",
+        );
+
+        expect(contents).toHaveLength(1);
+        expect(contents[0]?.uri).toBe("file:///repo/README.md");
+        expect(contents[0]?.text).toBe("# My Project\n\nThis is a readme.");
+        expect(contents[0]?.mimeType).toBe("text/markdown");
+        expect(mockFetch).toHaveBeenCalledWith(
+          "http://localhost:8090/api/v1/servers/github/resources/content?uri=file%3A%2F%2F%2Frepo%2FREADME.md",
+          expect.objectContaining({
+            headers: expect.any(Object),
+          }),
+        );
+      });
+
+      it("should handle blob content", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resource content with blob.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [
+            {
+              uri: "file:///repo/logo.png",
+              blob: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+              mimeType: "image/png",
+            },
+          ],
+        });
+
+        const contents = await client.servers.github!.readResource(
+          "file:///repo/logo.png",
+        );
+
+        expect(contents).toHaveLength(1);
+        expect(contents[0]?.blob).toBeDefined();
+        expect(contents[0]?.mimeType).toBe("image/png");
+      });
+    });
+
+    describe("Pattern: client.servers.foo.hasResource(uri)", () => {
+      it("should return true when resource exists", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resources list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            resources: [
+              {
+                name: "readme",
+                uri: "file:///repo/README.md",
+                description: "Project readme",
+              },
+            ],
+          }),
+        });
+
+        const exists = await client.servers.github!.hasResource(
+          "file:///repo/README.md",
+        );
+
+        expect(exists).toBe(true);
+      });
+
+      it("should return false when resource does not exist", async () => {
+        // Health check.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: "ok",
+            latency: "2ms",
+            lastChecked: "2025-10-07T15:00:00Z",
+            lastSuccessful: "2025-10-07T15:00:00Z",
+          }),
+        });
+
+        // Resources list.
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            resources: [
+              {
+                name: "readme",
+                uri: "file:///repo/README.md",
+              },
+            ],
+          }),
+        });
+
+        const exists = await client.servers.github!.hasResource(
+          "file:///repo/nonexistent.md",
+        );
+
+        expect(exists).toBe(false);
+      });
+
+      it("should return false on error (safe predicate)", async () => {
+        // Health check returns error.
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: "Internal Server Error",
+          text: async () => JSON.stringify({ detail: "Server error" }),
+        });
+
+        const exists = await client.servers.github!.hasResource(
+          "file:///repo/README.md",
+        );
+
+        expect(exists).toBe(false);
+      });
+    });
+  });
 });

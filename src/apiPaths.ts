@@ -25,6 +25,18 @@ export const API_PATHS = {
   PROMPT_GET_GENERATED: (serverName: string, promptName: string) =>
     `${SERVERS_BASE}/${encodeURIComponent(serverName)}/prompts/${encodeURIComponent(promptName)}`,
 
+  // Resources
+  SERVER_RESOURCES: (serverName: string, cursor?: string) => {
+    const base = `${SERVERS_BASE}/${encodeURIComponent(serverName)}/resources`;
+    return cursor ? `${base}?cursor=${encodeURIComponent(cursor)}` : base;
+  },
+  SERVER_RESOURCE_TEMPLATES: (serverName: string, cursor?: string) => {
+    const base = `${SERVERS_BASE}/${encodeURIComponent(serverName)}/resources/templates`;
+    return cursor ? `${base}?cursor=${encodeURIComponent(cursor)}` : base;
+  },
+  RESOURCE_CONTENT: (serverName: string, uri: string) =>
+    `${SERVERS_BASE}/${encodeURIComponent(serverName)}/resources/content?uri=${encodeURIComponent(uri)}`,
+
   // Health
   HEALTH_ALL: HEALTH_SERVERS_BASE,
   HEALTH_SERVER: (serverName: string) =>
