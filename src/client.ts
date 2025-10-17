@@ -406,22 +406,18 @@ export class McpdClient {
     );
 
     // Process results and transform prompt names.
-    const allPrompts: Prompt[] = [];
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        const { serverName, prompts } = result.value;
-        // Transform prompt names to serverName__promptName format.
-        for (const prompt of prompts) {
-          allPrompts.push({
-            ...prompt,
-            name: `${serverName}__${prompt.name}`,
-          });
-        }
-      } else {
-        // If we can't get prompts for a server, skip it with a warning.
-        console.warn(`Failed to get prompts for server:`, result.reason);
-      }
-    }
+const allPrompts: Prompt[] = results.flatMap(result => {
+  if (result.status === "fulfilled") {
+    const { serverName, prompts } = result.value;
+    return prompts.map(prompt => ({
+      ...prompt,
+      name: `${serverName}__${prompt.name}`,
+    }));
+  } else {
+    console.warn(`Failed to get prompts for server:`, result.reason);
+    return []; // Return an empty array for rejected promises
+  }
+});
 
     return allPrompts;
   }
