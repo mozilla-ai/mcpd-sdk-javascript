@@ -33,6 +33,11 @@ import {
   Prompts,
   GeneratePromptResponseBody,
   PromptGenerateArguments,
+  Resource,
+  Resources,
+  ResourceTemplate,
+  ResourceTemplates,
+  ResourceContent,
 } from "./types";
 import { createCache } from "./utils/cache";
 import { ServersNamespace } from "./dynamicCaller";
@@ -76,6 +81,7 @@ export class McpdClient {
   readonly #timeout: number;
   readonly #serverHealthCache: LRUCache<string, ServerHealth | Error>;
   readonly #functionBuilder: FunctionBuilder;
+  readonly #resourceCache: Map<string, { serverName: string; uri: string }>;
   readonly #cacheableExceptions = new Set([
     ServerNotFoundError,
     ServerUnhealthyError,
@@ -108,12 +114,18 @@ export class McpdClient {
       ttl: healthCacheTtlMs,
     });
 
+    // Initialize resource cache for mapping namespaced names to server/URI.
+    this.#resourceCache = new Map();
+
     // Initialize servers namespace and function builder with injected functions
     this.servers = new ServersNamespace({
       performCall: this.#performCall.bind(this),
       getTools: this.#getToolsByServer.bind(this),
       generatePrompt: this.#generatePromptInternal.bind(this),
       getPrompts: this.#getPromptsByServer.bind(this),
+      getResources: this.#getResourcesByServer.bind(this),
+      getResourceTemplates: this.#getResourceTemplatesByServer.bind(this),
+      readResource: this.#readResourceByServer.bind(this),
     });
     this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
@@ -464,6 +476,225 @@ export class McpdClient {
   }
 
   /**
+   * Get resources from all (or specific) MCP servers with namespaced names.
+   *
+   * IMPORTANT: Resource names are transformed to `serverName__resourceName` format to:
+   * 1. Prevent naming clashes when aggregating resources from multiple servers
+   * 2. Identify which server each resource belongs to
+   *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching resources. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Servers that don't implement resources (return 501 Not Implemented) are silently
+   * skipped, allowing this method to work with mixed server types.
+   *
+   * Resource fetches from multiple servers are executed concurrently for optimal performance.
+   *
+   * @param options - Optional configuration
+   * @param options.servers - Array of server names to include. If not specified, includes all servers.
+   * @returns Array of resource schemas with transformed names (serverName__resourceName). Only includes resources from healthy servers that support them.
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If requests to the daemon time out
+   * @throws {AuthenticationError} If API key authentication fails
+   * @throws {McpdError} If health check or initial server listing fails
+   *
+   * @example
+   * ```typescript
+   * // Get all resources from all servers
+   * const allResources = await client.getResources();
+   * // Returns: [
+   * //   { name: "github__readme", uri: "file:///repo/README.md", _serverName: "github", ... },
+   * //   { name: "slack__channels", uri: "slack://...", _serverName: "slack", ... }
+   * // ]
+   *
+   * // Get resources from specific servers only
+   * const someResources = await client.getResources({ servers: ['github'] });
+   *
+   * // Original resource name "readme" becomes "github__readme"
+   * // This prevents clashes if multiple servers have resources with the same name
+   * ```
+   */
+  async getResources(options?: { servers?: string[] }): Promise<Resource[]> {
+    const { servers } = options || {};
+
+    // Get healthy servers (fetches list if not provided, then filters by health).
+    const healthyServers = await this.#getHealthyServers(servers);
+
+    // Fetch resources from all healthy servers in parallel.
+    const results = await Promise.allSettled(
+      healthyServers.map(async (serverName) => ({
+        serverName,
+        resources: await this.#getResourcesByServer(serverName),
+      })),
+    );
+
+    // Process results and transform resource names.
+    const allResources: Resource[] = results.flatMap((result) => {
+      if (result.status === "fulfilled") {
+        const { serverName, resources } = result.value;
+        return resources.map((resource) => {
+          const namespacedResource = {
+            ...resource,
+            name: `${serverName}__${resource.name}`,
+            _serverName: serverName,
+            _resourceName: resource.name,
+            _uri: resource.uri,
+          };
+
+          // Populate resource cache for readResource().
+          this.#resourceCache.set(namespacedResource.name, {
+            serverName,
+            uri: resource.uri,
+          });
+
+          return namespacedResource;
+        });
+      } else {
+        console.warn(`Failed to get resources for server:`, result.reason);
+        return [];
+      }
+    });
+
+    return allResources;
+  }
+
+  /**
+   * Get resource templates from all (or specific) MCP servers with namespaced names.
+   *
+   * IMPORTANT: Template names are transformed to `serverName__templateName` format to:
+   * 1. Prevent naming clashes when aggregating templates from multiple servers
+   * 2. Identify which server each template belongs to
+   *
+   * This method automatically filters out unhealthy servers by checking their health
+   * status before fetching templates. Unhealthy servers are silently skipped to ensure
+   * the method returns quickly without waiting for timeouts on failed servers.
+   *
+   * Servers that don't implement resource templates (return 501 Not Implemented) are
+   * silently skipped, allowing this method to work with mixed server types.
+   *
+   * Template fetches from multiple servers are executed concurrently for optimal performance.
+   *
+   * @param options - Optional configuration
+   * @param options.servers - Array of server names to include. If not specified, includes all servers.
+   * @returns Array of resource template schemas with transformed names (serverName__templateName). Only includes templates from healthy servers that support them.
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If requests to the daemon time out
+   * @throws {AuthenticationError} If API key authentication fails
+   * @throws {McpdError} If health check or initial server listing fails
+   *
+   * @example
+   * ```typescript
+   * // Get all resource templates from all servers
+   * const allTemplates = await client.getResourceTemplates();
+   * // Returns: [
+   * //   { name: "github__file", uriTemplate: "file:///{path}", _serverName: "github", ... }
+   * // ]
+   *
+   * // Get templates from specific servers only
+   * const someTemplates = await client.getResourceTemplates({ servers: ['github'] });
+   *
+   * // Original template name "file" becomes "github__file"
+   * // This prevents clashes if multiple servers have templates with the same name
+   * ```
+   */
+  async getResourceTemplates(options?: {
+    servers?: string[];
+  }): Promise<ResourceTemplate[]> {
+    const { servers } = options || {};
+
+    // Get healthy servers (fetches list if not provided, then filters by health).
+    const healthyServers = await this.#getHealthyServers(servers);
+
+    // Fetch resource templates from all healthy servers in parallel.
+    const results = await Promise.allSettled(
+      healthyServers.map(async (serverName) => ({
+        serverName,
+        templates: await this.#getResourceTemplatesByServer(serverName),
+      })),
+    );
+
+    // Process results and transform template names.
+    const allTemplates: ResourceTemplate[] = results.flatMap((result) => {
+      if (result.status === "fulfilled") {
+        const { serverName, templates } = result.value;
+        return templates.map((template) => ({
+          ...template,
+          name: `${serverName}__${template.name}`,
+          _serverName: serverName,
+          _templateName: template.name,
+        }));
+      } else {
+        console.warn(
+          `Failed to get resource templates for server:`,
+          result.reason,
+        );
+        return [];
+      }
+    });
+
+    return allTemplates;
+  }
+
+  /**
+   * Read resource content using a namespaced resource name.
+   *
+   * This method uses an internal cache to map namespaced names to their server and URI.
+   * If the resource is not found in cache, it automatically calls getResources() to
+   * populate the cache and retries the lookup.
+   *
+   * @param namespacedName - The namespaced resource name (serverName__resourceName)
+   * @returns Array of resource contents (text or blob)
+   * @throws {Error} If the resource is not found after populating the cache
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   *
+   * @example
+   * ```typescript
+   * // Read content by namespaced name - cache populated automatically if needed
+   * const contents = await client.readResource("github__readme");
+   * for (const content of contents) {
+   *   if (content.text) {
+   *     console.log(content.text);
+   *   } else if (content.blob) {
+   *     console.log('Binary content (base64):', content.blob.substring(0, 50) + '...');
+   *   }
+   * }
+   *
+   * // You can also pre-populate the cache for efficiency if reading multiple resources
+   * await client.getResources();
+   * const readme = await client.readResource("github__readme");
+   * const changelog = await client.readResource("github__changelog");
+   * ```
+   */
+  async readResource(namespacedName: string): Promise<ResourceContent[]> {
+    // Look up resource in cache.
+    let cached = this.#resourceCache.get(namespacedName);
+
+    // If not in cache, populate it by calling getResources().
+    if (!cached) {
+      await this.getResources();
+      cached = this.#resourceCache.get(namespacedName);
+
+      // If still not found after populating cache, resource doesn't exist.
+      if (!cached) {
+        throw new Error(
+          `Resource '${namespacedName}' not found. ` +
+            `Use getResources() to see available resources.`,
+        );
+      }
+    }
+
+    const { serverName, uri } = cached;
+
+    // Read resource content from server.
+    return this.#readResourceByServer(serverName, uri);
+  }
+
+  /**
    * Internal method to get tool schemas for a server.
    * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
@@ -564,6 +795,110 @@ export class McpdClient {
     });
 
     return response;
+  }
+
+  /**
+   * Internal method to get resource schemas for a server.
+   * Used internally for getResources and by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to get resources for
+   * @param cursor - Optional cursor for pagination
+   * @returns Resource schemas for the specified server
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #getResourcesByServer(
+    serverName: string,
+    cursor?: string,
+  ): Promise<Resource[]> {
+    try {
+      // Check server health first.
+      await this.#ensureServerHealthy(serverName);
+
+      const path = API_PATHS.SERVER_RESOURCES(serverName, cursor);
+      const response = await this.#request<Resources>(path);
+      return response.resources || [];
+    } catch (error) {
+      // Handle 501 Not Implemented - server doesn't support resources.
+      if (
+        error instanceof McpdError &&
+        error.message.includes("501") &&
+        error.message.includes("Not Implemented")
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method to get resource template schemas for a server.
+   * Used internally for getResourceTemplates and by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to get resource templates for
+   * @param cursor - Optional cursor for pagination
+   * @returns Resource template schemas for the specified server
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #getResourceTemplatesByServer(
+    serverName: string,
+    cursor?: string,
+  ): Promise<ResourceTemplate[]> {
+    try {
+      // Check server health first.
+      await this.#ensureServerHealthy(serverName);
+
+      const path = API_PATHS.SERVER_RESOURCE_TEMPLATES(serverName, cursor);
+      const response = await this.#request<ResourceTemplates>(path);
+      return response.templates || [];
+    } catch (error) {
+      // Handle 501 Not Implemented - server doesn't support resource templates.
+      if (
+        error instanceof McpdError &&
+        error.message.includes("501") &&
+        error.message.includes("Not Implemented")
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method to read resource content from a server.
+   * Used by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to read resource from
+   * @param uri - The resource URI
+   * @returns Array of resource contents (text or blob)
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #readResourceByServer(
+    serverName: string,
+    uri: string,
+  ): Promise<ResourceContent[]> {
+    // Check server health first.
+    await this.#ensureServerHealthy(serverName);
+
+    const path = API_PATHS.RESOURCE_CONTENT(serverName, uri);
+    const response = await this.#request<ResourceContent[]>(path);
+    return response || [];
   }
 
   /**

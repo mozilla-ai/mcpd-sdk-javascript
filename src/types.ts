@@ -284,6 +284,32 @@ export type GeneratePromptFn = (
 ) => Promise<GeneratePromptResponseBody>;
 
 /**
+ * Function signature for getting resources from a server.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type GetResourcesFn = (serverName: string) => Promise<Resource[]>;
+
+/**
+ * Function signature for getting resource templates from a server.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type GetResourceTemplatesFn = (
+  serverName: string,
+) => Promise<ResourceTemplate[]>;
+
+/**
+ * Function signature for reading resource content from a server.
+ * This is injected into proxy classes via dependency injection.
+ * @internal
+ */
+export type ReadResourceFn = (
+  serverName: string,
+  uri: string,
+) => Promise<ResourceContent[]>;
+
+/**
  * MCP resource definition.
  */
 export interface Resource {
@@ -292,6 +318,10 @@ export interface Resource {
   description?: string;
   mimeType?: string;
   _meta?: Record<string, unknown>;
+  // SDK additions for client-level aggregation.
+  _serverName?: string;
+  _resourceName?: string;
+  _uri?: string;
 }
 
 /**
@@ -368,6 +398,9 @@ export interface ResourceTemplate {
   description?: string;
   mimeType?: string;
   _meta?: Record<string, unknown>;
+  // SDK additions for client-level aggregation.
+  _serverName?: string;
+  _templateName?: string;
 }
 
 /**
