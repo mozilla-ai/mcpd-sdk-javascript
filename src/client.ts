@@ -535,12 +535,9 @@ export class McpdClient {
   /**
    * Internal method to generate a prompt on a server.
    *
-   * ⚠️ This method is truly private and cannot be accessed by SDK consumers.
-   * Use the fluent API instead: `client.servers.foo.prompts.bar(args)`
-   *
    * This method is used internally by:
    * - PromptsNamespace (via dependency injection)
-   * - Server.getPrompt() (via dependency injection)
+   * - Server.generatePrompt() (via dependency injection)
    *
    * @param serverName - The name of the server
    * @param promptName - The exact name of the prompt
@@ -718,11 +715,8 @@ export class McpdClient {
   /**
    * Internal method to perform a tool call on a server.
    *
-   * ⚠️ This method is truly private and cannot be accessed by SDK consumers.
-   * Use the fluent API instead: `client.servers.foo.tools.bar(args)`
-   *
    * This method is used internally by:
-   * - ToolsProxy (via dependency injection)
+   * - ToolsNamespace (via dependency injection)
    * - FunctionBuilder (via dependency injection)
    *
    * @param serverName - The name of the server
