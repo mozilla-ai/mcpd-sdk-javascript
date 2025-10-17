@@ -109,12 +109,12 @@ export class McpdClient {
     });
 
     // Initialize servers namespace and function builder with injected functions
-    this.servers = new ServersNamespace(
-      this.#performCall.bind(this),
-      this.#getToolsByServer.bind(this),
-      this.#generatePromptInternal.bind(this),
-      this.#getPromptsByServer.bind(this),
-    );
+    this.servers = new ServersNamespace({
+      performCall: this.#performCall.bind(this),
+      getTools: this.#getToolsByServer.bind(this),
+      generatePrompt: this.#generatePromptInternal.bind(this),
+      getPrompts: this.#getPromptsByServer.bind(this),
+    });
     this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
 
@@ -299,18 +299,8 @@ export class McpdClient {
   async getToolSchemas(options?: { servers?: string[] }): Promise<Tool[]> {
     const { servers } = options || {};
 
-    // Determine which servers to query
-    const serverNames =
-      servers && servers.length > 0 ? servers : await this.listServers();
-
-    // Get health status for all servers (single API call)
-    const healthMap = await this.getServerHealth();
-
-    // Filter to only healthy servers
-    const healthyServers = serverNames.filter((name) => {
-      const health = healthMap[name];
-      return health && HealthStatusHelpers.isHealthy(health.status);
-    });
+    // Get healthy servers (fetches list if not provided, then filters by health).
+    const healthyServers = await this.#getHealthyServers(servers);
 
     // Fetch tools from all healthy servers in parallel
     const results = await Promise.allSettled(
@@ -384,18 +374,8 @@ export class McpdClient {
   async getPrompts(options?: { servers?: string[] }): Promise<Prompt[]> {
     const { servers } = options || {};
 
-    // Determine which servers to query.
-    const serverNames =
-      servers && servers.length > 0 ? servers : await this.listServers();
-
-    // Get health status for all servers.
-    const healthMap = await this.getServerHealth();
-
-    // Filter to only healthy servers.
-    const healthyServers = serverNames.filter((name) => {
-      const health = healthMap[name];
-      return health && HealthStatusHelpers.isHealthy(health.status);
-    });
+    // Get healthy servers (fetches list if not provided, then filters by health).
+    const healthyServers = await this.#getHealthyServers(servers);
 
     // Fetch prompts from all healthy servers in parallel.
     const results = await Promise.allSettled(
@@ -406,18 +386,18 @@ export class McpdClient {
     );
 
     // Process results and transform prompt names.
-const allPrompts: Prompt[] = results.flatMap(result => {
-  if (result.status === "fulfilled") {
-    const { serverName, prompts } = result.value;
-    return prompts.map(prompt => ({
-      ...prompt,
-      name: `${serverName}__${prompt.name}`,
-    }));
-  } else {
-    console.warn(`Failed to get prompts for server:`, result.reason);
-    return []; // Return an empty array for rejected promises
-  }
-});
+    const allPrompts: Prompt[] = results.flatMap((result) => {
+      if (result.status === "fulfilled") {
+        const { serverName, prompts } = result.value;
+        return prompts.map((prompt) => ({
+          ...prompt,
+          name: `${serverName}__${prompt.name}`,
+        }));
+      } else {
+        console.warn(`Failed to get prompts for server:`, result.reason);
+        return []; // Return an empty array for rejected promises
+      }
+    });
 
     return allPrompts;
   }
@@ -531,12 +511,11 @@ const allPrompts: Prompt[] = results.flatMap(result => {
     serverName: string,
     cursor?: string,
   ): Promise<Prompt[]> {
-    // Check server health first.
-    await this.#ensureServerHealthy(serverName);
-
-    const path = API_PATHS.SERVER_PROMPTS(serverName, cursor);
-
     try {
+      // Check server health first.
+      await this.#ensureServerHealthy(serverName);
+
+      const path = API_PATHS.SERVER_PROMPTS(serverName, cursor);
       const response = await this.#request<Prompts>(path);
       return response.prompts || [];
     } catch (error) {
@@ -714,6 +693,29 @@ const allPrompts: Prompt[] = results.flatMap(result => {
   }
 
   /**
+   * Get list of healthy servers from optional server names.
+   *
+   * This helper fetches server names (if not provided) and filters to only healthy servers.
+   * Used by getToolSchemas(), getPrompts(), and agentTools() to avoid timeouts on failed servers.
+   *
+   * @param servers - Optional array of server names. If not provided, fetches all servers.
+   * @returns Array of healthy server names
+   * @internal
+   */
+  async #getHealthyServers(servers?: string[]): Promise<string[]> {
+    // Get server names if not provided.
+    const serverNames =
+      servers && servers.length > 0 ? servers : await this.listServers();
+
+    // Get health status and filter to healthy servers.
+    const healthMap = await this.getServerHealth();
+    return serverNames.filter((name) => {
+      const health = healthMap[name];
+      return health && HealthStatusHelpers.isHealthy(health.status);
+    });
+  }
+
+  /**
    * Internal method to perform a tool call on a server.
    *
    * ⚠️ This method is truly private and cannot be accessed by SDK consumers.
@@ -811,18 +813,8 @@ const allPrompts: Prompt[] = results.flatMap(result => {
    * @internal
    */
   async agentTools(servers?: string[]): Promise<AgentFunction[]> {
-    // Determine which servers to query
-    const serverNames =
-      servers && servers.length > 0 ? servers : await this.listServers();
-
-    // Get health status for all servers (single API call)
-    const healthMap = await this.getServerHealth();
-
-    // Filter to only healthy servers
-    const healthyServers = serverNames.filter((name) => {
-      const health = healthMap[name];
-      return health && HealthStatusHelpers.isHealthy(health.status);
-    });
+    // Get healthy servers (fetches list if not provided, then filters by health).
+    const healthyServers = await this.#getHealthyServers(servers);
 
     // Fetch tools from all healthy servers in parallel
     const results = await Promise.allSettled(

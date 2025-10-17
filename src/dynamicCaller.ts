@@ -54,17 +54,23 @@ export class ServersNamespace {
   /**
    * Initialize the ServersNamespace with injected functions.
    *
-   * @param performCall - Function to execute tool calls
-   * @param getTools - Function to get tool schemas
-   * @param generatePrompt - Function to generate prompts
-   * @param getPrompts - Function to get prompt schemas
+   * @param options - Configuration object
+   * @param options.performCall - Function to execute tool calls
+   * @param options.getTools - Function to get tool schemas
+   * @param options.generatePrompt - Function to generate prompts
+   * @param options.getPrompts - Function to get prompt schemas
    */
-  constructor(
-    performCall: PerformCallFn,
-    getTools: GetToolsFn,
-    generatePrompt: GeneratePromptFn,
-    getPrompts: GetPromptsFn,
-  ) {
+  constructor({
+    performCall,
+    getTools,
+    generatePrompt,
+    getPrompts,
+  }: {
+    performCall: PerformCallFn;
+    getTools: GetToolsFn;
+    generatePrompt: GeneratePromptFn;
+    getPrompts: GetPromptsFn;
+  }) {
     this.#performCall = performCall;
     this.#getTools = getTools;
     this.#generatePrompt = generatePrompt;
@@ -177,8 +183,13 @@ export class Server {
    *
    * The tool name must match exactly as returned by the server.
    *
+   * This method is designed as a safe boolean predicate - it catches all errors
+   * (ServerNotFoundError, ServerUnhealthyError, ConnectionError, etc.) and returns
+   * false rather than throwing. This makes it safe to use in conditional checks
+   * without requiring error handling.
+   *
    * @param toolName - The exact name of the tool to check
-   * @returns True if the tool exists, false otherwise
+   * @returns True if the tool exists, false otherwise (including on errors)
    *
    * @example
    * ```typescript
@@ -192,6 +203,7 @@ export class Server {
       const tools = await this.#getTools(this.#serverName);
       return tools.some((t) => t.name === toolName);
     } catch {
+      // Return false on any error to provide a safe boolean predicate.
       return false;
     }
   }
@@ -242,6 +254,10 @@ export class Server {
   /**
    * Get all prompts available on this server.
    *
+   * Note: This method is marked `async` for consistency with other server methods,
+   * even though it doesn't directly await. This maintains a uniform async interface
+   * and allows for future enhancements without breaking the API contract.
+   *
    * @returns Array of prompt schemas
    * @throws {ServerNotFoundError} If the server doesn't exist
    * @throws {ServerUnhealthyError} If the server is unhealthy
@@ -263,8 +279,13 @@ export class Server {
    *
    * The prompt name must match exactly as returned by the server.
    *
+   * This method is designed as a safe boolean predicate - it catches all errors
+   * (ServerNotFoundError, ServerUnhealthyError, ConnectionError, etc.) and returns
+   * false rather than throwing. This makes it safe to use in conditional checks
+   * without requiring error handling.
+   *
    * @param promptName - The exact name of the prompt to check
-   * @returns True if the prompt exists, false otherwise
+   * @returns True if the prompt exists, false otherwise (including on errors)
    *
    * @example
    * ```typescript
@@ -278,6 +299,7 @@ export class Server {
       const prompts = await this.#getPrompts(this.#serverName);
       return prompts.some((p) => p.name === promptName);
     } catch {
+      // Return false on any error to provide a safe boolean predicate.
       return false;
     }
   }
@@ -455,8 +477,7 @@ export class PromptsNamespace {
           const promptName = prop;
 
           // Check if the prompt exists (exact match only).
-          const prompts = await target.#getPrompts(target.#serverName);
-          const prompt = prompts.find((p) => p.name === promptName);
+          const prompt = await target.#getPromptByName(promptName);
 
           if (!prompt) {
             throw new ToolNotFoundError(
@@ -472,5 +493,17 @@ export class PromptsNamespace {
         };
       },
     });
+  }
+
+  /**
+   * Helper method to find a prompt by name on this server.
+   *
+   * @param promptName - The exact name of the prompt to find
+   * @returns The prompt if found, undefined otherwise
+   * @internal
+   */
+  async #getPromptByName(promptName: string): Promise<Prompt | undefined> {
+    const prompts = await this.#getPrompts(this.#serverName);
+    return prompts.find((p) => p.name === promptName);
   }
 }
