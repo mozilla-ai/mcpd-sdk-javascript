@@ -504,6 +504,9 @@ npm run test:coverage
 ### Linting and Formatting
 
 ```bash
+# Run all checks (format, lint, typecheck, test, build)
+npm run check
+
 # Run linter
 npm run lint
 
