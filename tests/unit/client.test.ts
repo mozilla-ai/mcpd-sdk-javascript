@@ -122,7 +122,7 @@ describe("McpdClient", () => {
     });
   });
 
-  describe("getToolSchemas()", () => {
+  describe("getTools()", () => {
     it("should return all tools from all servers with transformed names", async () => {
       const mockTools = {
         time: [
@@ -186,7 +186,7 @@ describe("McpdClient", () => {
         json: async () => ({ tools: mockTools.math }),
       });
 
-      const tools = await client.getToolSchemas();
+      const tools = await client.getTools();
 
       expect(tools).toHaveLength(3);
       expect(tools[0]?.name).toBe("time__get_current_time");
@@ -227,7 +227,7 @@ describe("McpdClient", () => {
         json: async () => ({ tools: mockTools.time }),
       });
 
-      const tools = await client.getToolSchemas({ servers: ["time"] });
+      const tools = await client.getTools({ servers: ["time"] });
 
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("time__get_current_time");
@@ -248,7 +248,7 @@ describe("McpdClient", () => {
         }),
       });
 
-      const tools = await client.getToolSchemas();
+      const tools = await client.getTools();
 
       expect(tools).toHaveLength(0);
     });
@@ -298,7 +298,7 @@ describe("McpdClient", () => {
         json: async () => ({ tools: mockTools.time }),
       });
 
-      const tools = await client.getToolSchemas();
+      const tools = await client.getTools();
 
       // Should only get tools from healthy server
       expect(tools).toHaveLength(1);

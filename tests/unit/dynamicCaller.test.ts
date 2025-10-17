@@ -7,7 +7,7 @@ import { ToolNotFoundError } from "../../src/errors";
  *
  * These tests ensure that all documented API patterns work correctly:
  * - client.servers[serverName]! (dynamic server access)
- * - client.servers.foo.listTools() (list tools)
+ * - client.servers.foo.getTools() (list tools)
  * - client.servers.foo!.tools.bar!(args) (static tool call)
  * - client.servers.foo.callTool(name, args) (dynamic tool call)
  * - client.servers.foo.hasTool(name) (check tool existence)
@@ -61,14 +61,14 @@ describe("Dynamic Calling Patterns", () => {
         }),
       });
 
-      const tools = await client.servers[serverName]!.listTools();
+      const tools = await client.servers[serverName]!.getTools();
 
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("get_current_time");
     });
   });
 
-  describe("Pattern: client.servers.foo.listTools()", () => {
+  describe("Pattern: client.servers.foo.getTools()", () => {
     it("should list tools with static property access", async () => {
       // Health check.
       mockFetch.mockResolvedValueOnce({
@@ -92,7 +92,7 @@ describe("Dynamic Calling Patterns", () => {
         }),
       });
 
-      const tools = await client.servers.time!.listTools();
+      const tools = await client.servers.time!.getTools();
 
       expect(tools).toHaveLength(2);
       expect(tools[0]?.name).toBe("tool1");
@@ -473,7 +473,7 @@ describe("Dynamic Calling Patterns", () => {
       });
 
       // Mix dynamic server with static method.
-      const tools = await client.servers[serverName]!.listTools();
+      const tools = await client.servers[serverName]!.getTools();
 
       expect(tools).toHaveLength(1);
       expect(tools[0]?.name).toBe("tool1");

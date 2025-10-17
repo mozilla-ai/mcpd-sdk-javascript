@@ -295,20 +295,20 @@ export class McpdClient {
    * @example
    * ```typescript
    * // Get all tools from all servers
-   * const allTools = await client.getToolSchemas();
+   * const allTools = await client.getTools();
    * // Returns: [
    * //   { name: "time__get_current_time", description: "...", ... },
    * //   { name: "fetch__fetch_url", description: "...", ... }
    * // ]
    *
    * // Get tools from specific servers only
-   * const someTools = await client.getToolSchemas({ servers: ['time', 'fetch'] });
+   * const someTools = await client.getTools({ servers: ['time', 'fetch'] });
    *
    * // Original tool name "get_current_time" becomes "time__get_current_time"
    * // This prevents clashes if multiple servers have tools with the same name
    * ```
    */
-  async getToolSchemas(options?: { servers?: string[] }): Promise<Tool[]> {
+  async getTools(options?: { servers?: string[] }): Promise<Tool[]> {
     const { servers } = options || {};
 
     // Get healthy servers (fetches list if not provided, then filters by health).
@@ -334,10 +334,8 @@ export class McpdClient {
             name: `${serverName}__${tool.name}`,
           });
         }
-      } else {
-        // If we can't get tools for a server, skip it with a warning
-        console.warn(`Failed to get tools for server:`, result.reason);
       }
+      // Silently skip failed servers - they're already filtered by health checks
     }
 
     return allTools;
@@ -405,10 +403,9 @@ export class McpdClient {
           ...prompt,
           name: `${serverName}__${prompt.name}`,
         }));
-      } else {
-        console.warn(`Failed to get prompts for server:`, result.reason);
-        return []; // Return an empty array for rejected promises
       }
+      // Silently skip failed servers - they're already filtered by health checks
+      return [];
     });
 
     return allPrompts;
@@ -550,10 +547,9 @@ export class McpdClient {
 
           return namespacedResource;
         });
-      } else {
-        console.warn(`Failed to get resources for server:`, result.reason);
-        return [];
       }
+      // Silently skip failed servers - they're already filtered by health checks
+      return [];
     });
 
     return allResources;
@@ -624,13 +620,9 @@ export class McpdClient {
           _serverName: serverName,
           _templateName: template.name,
         }));
-      } else {
-        console.warn(
-          `Failed to get resource templates for server:`,
-          result.reason,
-        );
-        return [];
       }
+      // Silently skip failed servers - they're already filtered by health checks
+      return [];
     });
 
     return allTemplates;
@@ -1165,10 +1157,8 @@ export class McpdClient {
           );
           agentTools.push(func);
         }
-      } else {
-        // If we can't get tools for a server, skip it with a warning
-        console.warn(`Failed to get tools for server:`, result.reason);
       }
+      // Silently skip failed servers - they're already filtered by health checks
     }
 
     return agentTools;

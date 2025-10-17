@@ -47,7 +47,7 @@ console.log(servers);
 // Example: ['time', 'fetch', 'git']
 
 // List tool definitions for a specific server
-const tools = await client.servers.time.listTools();
+const tools = await client.servers.time.getTools();
 console.log(tools);
 
 // Dynamically call a tool via the .tools namespace
@@ -79,7 +79,7 @@ const client = new McpdClient({
 const servers: string[] = await client.listServers();
 
 // Get tools with proper typing
-const tools: Tool[] = await client.servers.time.listTools();
+const tools: Tool[] = await client.servers.time.getTools();
 
 // Dynamic tool invocation with error handling via .tools namespace
 try {
@@ -122,7 +122,7 @@ const servers = await client.listServers();
 // Returns: ['time', 'fetch', 'git']
 ```
 
-#### `client.getToolSchemas(options?)`
+#### `client.getTools(options?)`
 
 Returns tool schemas from all (or specific) servers with names transformed to `serverName__toolName` format.
 
@@ -136,7 +136,7 @@ This is useful for:
 
 ```typescript
 // Get all tools from all servers
-const allTools = await client.getToolSchemas();
+const allTools = await client.getTools();
 // Returns: [
 //   { name: "time__get_current_time", description: "...", inputSchema: {...} },
 //   { name: "fetch__fetch_url", description: "...", inputSchema: {...} },
@@ -144,16 +144,16 @@ const allTools = await client.getToolSchemas();
 // ]
 
 // Get tools from specific servers only
-const someTools = await client.getToolSchemas({ servers: ["time", "fetch"] });
+const someTools = await client.getTools({ servers: ["time", "fetch"] });
 ```
 
-#### `client.servers.<server>.listTools()`
+#### `client.servers.<server>.getTools()`
 
 Returns tool schemas for a specific server.
 
 ```typescript
 // Get tools for a specific server
-const timeTools = await client.servers.time.listTools();
+const timeTools = await client.servers.time.getTools();
 // Returns: [{ name: 'get_current_time', description: '...', inputSchema: {...} }]
 ```
 
@@ -172,13 +172,13 @@ const result = await client.servers.weather.tools.get_forecast({
 const time = await client.servers.time.tools.get_current_time();
 ```
 
-#### `client.servers.<server>.listTools()`
+#### `client.servers.<server>.getTools()`
 
-List all tools available on a specific server.
+Get all tools available on a specific server.
 
 ```typescript
 // List tools for a server using property access
-const tools = await client.servers.time.listTools();
+const tools = await client.servers.time.getTools();
 for (const tool of tools) {
   console.log(`${tool.name}: ${tool.description}`);
 }
@@ -186,7 +186,7 @@ for (const tool of tools) {
 // Useful in loops with dynamic server names
 const servers = await client.listServers();
 for (const serverName of servers) {
-  const tools = await client.servers[serverName].listTools();
+  const tools = await client.servers[serverName].getTools();
   console.log(`${serverName}: ${tools.length} tools`);
 }
 ```

@@ -35,7 +35,7 @@ async function main() {
     if (servers.includes('time')) {
       // Get tools for the time server
       console.log('Time server tools:');
-      const tools = await client.servers.time.listTools();
+      const tools = await client.servers.time.getTools();
       for (const tool of tools) {
         console.log(`  - ${tool.name}: ${tool.description || 'No description'}`);
       }
