@@ -9,14 +9,15 @@ This SDK provides high-level and dynamic access to those tools, making it easy t
 ## Features
 
 - Discover and list available `mcpd` hosted MCP servers
-- Retrieve tool definitions and schemas for one or all servers
+- Retrieve tool, prompt, and resource definitions from individual servers
 - Dynamically invoke any tool using a clean, attribute-based syntax
-- Unified AI framework integration - works directly with LangChain JS and Vercel AI SDK
+- Unified AI framework integration - works directly with LangChain JS and Vercel AI SDK via `getAgentTools()`
 - Generate self-contained, framework-compatible tool functions without conversion layers
 - Multiple output formats (`'array'`, `'object'`, `'map'`) for different framework needs
 - Full TypeScript support with comprehensive type definitions and overloads
 - Minimal dependencies (`lru-cache` for caching, `zod` for schema validation)
 - Works in both Node.js and browser environments
+- Clean API wrapper over mcpd HTTP endpoints - no opinionated aggregation logic
 
 ## Installation
 
@@ -47,7 +48,7 @@ console.log(servers);
 // Example: ['time', 'fetch', 'git']
 
 // List tool definitions for a specific server
-const tools = await client.servers.time.listTools();
+const tools = await client.servers.time.getTools();
 console.log(tools);
 
 // Dynamically call a tool via the .tools namespace
@@ -79,7 +80,7 @@ const client = new McpdClient({
 const servers: string[] = await client.listServers();
 
 // Get tools with proper typing
-const tools: Tool[] = await client.servers.time.listTools();
+const tools: Tool[] = await client.servers.time.getTools();
 
 // Dynamic tool invocation with error handling via .tools namespace
 try {
@@ -122,38 +123,13 @@ const servers = await client.listServers();
 // Returns: ['time', 'fetch', 'git']
 ```
 
-#### `client.getToolSchemas(options?)`
-
-Returns tool schemas from all (or specific) servers with names transformed to `serverName__toolName` format.
-
-**IMPORTANT**: Tool names are automatically transformed to prevent naming clashes and identify server origin. Original tool name `get_current_time` on server `time` becomes `time__get_current_time`.
-
-This is useful for:
-
-- MCP servers aggregating and re-exposing tools from multiple upstream servers
-- Tool inspection and discovery across all servers
-- Custom tooling that needs raw MCP tool schemas with unique names
-
-```typescript
-// Get all tools from all servers
-const allTools = await client.getToolSchemas();
-// Returns: [
-//   { name: "time__get_current_time", description: "...", inputSchema: {...} },
-//   { name: "fetch__fetch_url", description: "...", inputSchema: {...} },
-//   { name: "git__commit", description: "...", inputSchema: {...} }
-// ]
-
-// Get tools from specific servers only
-const someTools = await client.getToolSchemas({ servers: ["time", "fetch"] });
-```
-
-#### `client.servers.<server>.listTools()`
+#### `client.servers.<server>.getTools()`
 
 Returns tool schemas for a specific server.
 
 ```typescript
 // Get tools for a specific server
-const timeTools = await client.servers.time.listTools();
+const timeTools = await client.servers.time.getTools();
 // Returns: [{ name: 'get_current_time', description: '...', inputSchema: {...} }]
 ```
 
@@ -172,13 +148,13 @@ const result = await client.servers.weather.tools.get_forecast({
 const time = await client.servers.time.tools.get_current_time();
 ```
 
-#### `client.servers.<server>.listTools()`
+#### `client.servers.<server>.getTools()`
 
-List all tools available on a specific server.
+Get all tools available on a specific server.
 
 ```typescript
 // List tools for a server using property access
-const tools = await client.servers.time.listTools();
+const tools = await client.servers.time.getTools();
 for (const tool of tools) {
   console.log(`${tool.name}: ${tool.description}`);
 }
@@ -186,7 +162,7 @@ for (const tool of tools) {
 // Useful in loops with dynamic server names
 const servers = await client.listServers();
 for (const serverName of servers) {
-  const tools = await client.servers[serverName].listTools();
+  const tools = await client.servers[serverName].getTools();
   console.log(`${serverName}: ${tools.length} tools`);
 }
 ```
@@ -226,30 +202,6 @@ const serverName = "time";
 if (await client.servers[serverName].hasTool("get_current_time")) {
   const result = await client.servers[serverName].tools.get_current_time();
 }
-```
-
-#### `client.getPrompts(options?)`
-
-Returns prompt schemas from all (or specific) servers with names transformed to `serverName__promptName` format.
-
-**IMPORTANT**: Prompt names are automatically transformed to prevent naming clashes and identify server origin. Original prompt name `create_pr` on server `github` becomes `github__create_pr`.
-
-This is useful for:
-
-- Aggregating prompts from multiple servers
-- Prompt inspection and discovery across all servers
-- Custom tooling that needs raw MCP prompt schemas with unique names
-
-```typescript
-// Get all prompts from all servers
-const allPrompts = await client.getPrompts();
-// Returns: [
-//   { name: "github__create_pr", description: "...", arguments: [...] },
-//   { name: "slack__post_message", description: "...", arguments: [...] }
-// ]
-
-// Get prompts from specific servers only
-const somePrompts = await client.getPrompts({ servers: ["github"] });
 ```
 
 #### `client.generatePrompt(namespacedName, args?)`
@@ -327,6 +279,65 @@ if (await client.servers[serverName].hasPrompt("create_pr")) {
   const result = await client.servers[serverName].prompts.create_pr({
     title: "Fix bug",
   });
+}
+```
+
+#### `client.servers.<server>.getResources()`
+
+Returns resource schemas for a specific server.
+
+```typescript
+// Get resources for a specific server
+const githubResources = await client.servers.github.getResources();
+// Returns: [{ name: 'readme', uri: 'file:///repo/README.md', ... }]
+```
+
+#### `client.servers.<server>.getResourceTemplates()`
+
+Returns resource template schemas for a specific server.
+
+```typescript
+// Get resource templates for a specific server
+const githubTemplates = await client.servers.github.getResourceTemplates();
+// Returns: [{ name: 'file', uriTemplate: 'file:///{path}', ... }]
+```
+
+#### `client.servers.<server>.readResource(uri)`
+
+Read resource content by URI from a specific server.
+
+```typescript
+// Read resource content by URI
+const contents = await client.servers.github.readResource(
+  "file:///repo/README.md",
+);
+for (const content of contents) {
+  if (content.text) {
+    console.log(content.text);
+  } else if (content.blob) {
+    console.log("Binary content (base64):", content.blob);
+  }
+}
+```
+
+#### `client.servers.<server>.hasResource(uri)`
+
+Check if a specific resource exists on a server. Resource URIs must match exactly as returned by the MCP server.
+
+```typescript
+// Check if resource exists before reading it
+if (await client.servers.github.hasResource("file:///repo/README.md")) {
+  const contents = await client.servers.github.readResource(
+    "file:///repo/README.md",
+  );
+}
+
+// Using with dynamic server names
+const serverName = "github";
+if (await client.servers[serverName].hasResource("file:///repo/README.md")) {
+  const contents = await client.servers[serverName].readResource(
+    "file:///repo/README.md",
+  );
 }
 ```
 

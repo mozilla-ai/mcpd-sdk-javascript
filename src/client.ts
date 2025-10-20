@@ -33,6 +33,11 @@ import {
   Prompts,
   GeneratePromptResponseBody,
   PromptGenerateArguments,
+  Resource,
+  Resources,
+  ResourceTemplate,
+  ResourceTemplates,
+  ResourceContent,
 } from "./types";
 import { createCache } from "./utils/cache";
 import { ServersNamespace } from "./dynamicCaller";
@@ -114,6 +119,9 @@ export class McpdClient {
       getTools: this.#getToolsByServer.bind(this),
       generatePrompt: this.#generatePromptInternal.bind(this),
       getPrompts: this.#getPromptsByServer.bind(this),
+      getResources: this.#getResourcesByServer.bind(this),
+      getResourceTemplates: this.#getResourceTemplatesByServer.bind(this),
+      readResource: this.#readResourceByServer.bind(this),
     });
     this.#functionBuilder = new FunctionBuilder(this.#performCall.bind(this));
   }
@@ -252,154 +260,6 @@ export class McpdClient {
    */
   async listServers(): Promise<string[]> {
     return await this.#request<string[]>(API_PATHS.SERVERS);
-  }
-
-  /**
-   * Get tool schemas from all (or specific) MCP servers with transformed names.
-   *
-   * IMPORTANT: Tool names are transformed to `serverName__toolName` format to:
-   * 1. Prevent naming clashes when aggregating tools from multiple servers
-   * 2. Identify which server each tool belongs to
-   *
-   * This method automatically filters out unhealthy servers by checking their health
-   * status before fetching tools. Unhealthy servers are silently skipped to ensure
-   * the method returns quickly without waiting for timeouts on failed servers.
-   *
-   * Tool fetches from multiple servers are executed concurrently for optimal performance.
-   *
-   * This is useful for:
-   * - MCP servers that aggregate and re-expose tools from multiple upstream servers
-   * - Tool inspection and discovery across all servers
-   * - Custom tooling that needs raw MCP tool schemas
-   *
-   * @param options - Optional configuration
-   * @param options.servers - Array of server names to include. If not specified, includes all servers.
-   * @returns Array of tool schemas with transformed names (serverName__toolName). Only includes tools from healthy servers.
-   * @throws {ConnectionError} If unable to connect to the mcpd daemon
-   * @throws {TimeoutError} If requests to the daemon time out
-   * @throws {AuthenticationError} If API key authentication fails
-   * @throws {McpdError} If health check or initial server listing fails
-   *
-   * @example
-   * ```typescript
-   * // Get all tools from all servers
-   * const allTools = await client.getToolSchemas();
-   * // Returns: [
-   * //   { name: "time__get_current_time", description: "...", ... },
-   * //   { name: "fetch__fetch_url", description: "...", ... }
-   * // ]
-   *
-   * // Get tools from specific servers only
-   * const someTools = await client.getToolSchemas({ servers: ['time', 'fetch'] });
-   *
-   * // Original tool name "get_current_time" becomes "time__get_current_time"
-   * // This prevents clashes if multiple servers have tools with the same name
-   * ```
-   */
-  async getToolSchemas(options?: { servers?: string[] }): Promise<Tool[]> {
-    const { servers } = options || {};
-
-    // Get healthy servers (fetches list if not provided, then filters by health).
-    const healthyServers = await this.#getHealthyServers(servers);
-
-    // Fetch tools from all healthy servers in parallel
-    const results = await Promise.allSettled(
-      healthyServers.map(async (serverName) => ({
-        serverName,
-        tools: await this.#getToolsByServer(serverName),
-      })),
-    );
-
-    // Process results and transform tool names
-    const allTools: Tool[] = [];
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        const { serverName, tools } = result.value;
-        // Transform tool names to serverName__toolName format
-        for (const tool of tools) {
-          allTools.push({
-            ...tool,
-            name: `${serverName}__${tool.name}`,
-          });
-        }
-      } else {
-        // If we can't get tools for a server, skip it with a warning
-        console.warn(`Failed to get tools for server:`, result.reason);
-      }
-    }
-
-    return allTools;
-  }
-
-  /**
-   * Get prompts from all (or specific) MCP servers with namespaced names.
-   *
-   * IMPORTANT: Prompt names are transformed to `serverName__promptName` format to:
-   * 1. Prevent naming clashes when aggregating prompts from multiple servers
-   * 2. Identify which server each prompt belongs to
-   *
-   * This method automatically filters out unhealthy servers by checking their health
-   * status before fetching prompts. Unhealthy servers are silently skipped to ensure
-   * the method returns quickly without waiting for timeouts on failed servers.
-   *
-   * Servers that don't implement prompts (return 501 Not Implemented) are silently
-   * skipped, allowing this method to work with mixed server types.
-   *
-   * Prompt fetches from multiple servers are executed concurrently for optimal performance.
-   *
-   * @param options - Optional configuration
-   * @param options.servers - Array of server names to include. If not specified, includes all servers.
-   * @returns Array of prompt schemas with transformed names (serverName__promptName). Only includes prompts from healthy servers that support them.
-   * @throws {ConnectionError} If unable to connect to the mcpd daemon
-   * @throws {TimeoutError} If requests to the daemon time out
-   * @throws {AuthenticationError} If API key authentication fails
-   * @throws {McpdError} If health check or initial server listing fails
-   *
-   * @example
-   * ```typescript
-   * // Get all prompts from all servers
-   * const allPrompts = await client.getPrompts();
-   * // Returns: [
-   * //   { name: "github__create_pr", description: "...", arguments: [...] },
-   * //   { name: "notion__create_page", description: "...", arguments: [...] }
-   * // ]
-   *
-   * // Get prompts from specific servers only
-   * const somePrompts = await client.getPrompts({ servers: ['github', 'notion'] });
-   *
-   * // Original prompt name "create_pr" becomes "github__create_pr"
-   * // This prevents clashes if multiple servers have prompts with the same name
-   * ```
-   */
-  async getPrompts(options?: { servers?: string[] }): Promise<Prompt[]> {
-    const { servers } = options || {};
-
-    // Get healthy servers (fetches list if not provided, then filters by health).
-    const healthyServers = await this.#getHealthyServers(servers);
-
-    // Fetch prompts from all healthy servers in parallel.
-    const results = await Promise.allSettled(
-      healthyServers.map(async (serverName) => ({
-        serverName,
-        prompts: await this.#getPromptsByServer(serverName),
-      })),
-    );
-
-    // Process results and transform prompt names.
-    const allPrompts: Prompt[] = results.flatMap((result) => {
-      if (result.status === "fulfilled") {
-        const { serverName, prompts } = result.value;
-        return prompts.map((prompt) => ({
-          ...prompt,
-          name: `${serverName}__${prompt.name}`,
-        }));
-      } else {
-        console.warn(`Failed to get prompts for server:`, result.reason);
-        return []; // Return an empty array for rejected promises
-      }
-    });
-
-    return allPrompts;
   }
 
   /**
@@ -564,6 +424,110 @@ export class McpdClient {
     });
 
     return response;
+  }
+
+  /**
+   * Internal method to get resource schemas for a server.
+   * Used internally for getResources and by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to get resources for
+   * @param cursor - Optional cursor for pagination
+   * @returns Resource schemas for the specified server
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #getResourcesByServer(
+    serverName: string,
+    cursor?: string,
+  ): Promise<Resource[]> {
+    try {
+      // Check server health first.
+      await this.#ensureServerHealthy(serverName);
+
+      const path = API_PATHS.SERVER_RESOURCES(serverName, cursor);
+      const response = await this.#request<Resources>(path);
+      return response.resources || [];
+    } catch (error) {
+      // Handle 501 Not Implemented - server doesn't support resources.
+      if (
+        error instanceof McpdError &&
+        error.message.includes("501") &&
+        error.message.includes("Not Implemented")
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method to get resource template schemas for a server.
+   * Used internally for getResourceTemplates and by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to get resource templates for
+   * @param cursor - Optional cursor for pagination
+   * @returns Resource template schemas for the specified server
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #getResourceTemplatesByServer(
+    serverName: string,
+    cursor?: string,
+  ): Promise<ResourceTemplate[]> {
+    try {
+      // Check server health first.
+      await this.#ensureServerHealthy(serverName);
+
+      const path = API_PATHS.SERVER_RESOURCE_TEMPLATES(serverName, cursor);
+      const response = await this.#request<ResourceTemplates>(path);
+      return response.templates || [];
+    } catch (error) {
+      // Handle 501 Not Implemented - server doesn't support resource templates.
+      if (
+        error instanceof McpdError &&
+        error.message.includes("501") &&
+        error.message.includes("Not Implemented")
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method to read resource content from a server.
+   * Used by dependency injection for ServersNamespace.
+   *
+   * @param serverName - Server name to read resource from
+   * @param uri - The resource URI
+   * @returns Array of resource contents (text or blob)
+   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   * @throws {ServerUnhealthyError} If the server is not healthy
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   * @internal
+   */
+  async #readResourceByServer(
+    serverName: string,
+    uri: string,
+  ): Promise<ResourceContent[]> {
+    // Check server health first.
+    await this.#ensureServerHealthy(serverName);
+
+    const path = API_PATHS.RESOURCE_CONTENT(serverName, uri);
+    const response = await this.#request<ResourceContent[]>(path);
+    return response || [];
   }
 
   /**
@@ -818,23 +782,19 @@ export class McpdClient {
       })),
     );
 
-    // Build functions from tool schemas
-    const agentTools: AgentFunction[] = [];
-    for (const result of results) {
-      if (result.status === "fulfilled") {
+    // Build functions from tool schemas.
+    // Silently skip failed servers - they're already filtered by health checks.
+    const agentTools: AgentFunction[] = results
+      .filter((result) => result.status === "fulfilled")
+      .flatMap((result) => {
         const { serverName, tools } = result.value;
-        for (const toolSchema of tools) {
-          const func = this.#functionBuilder.createFunctionFromSchema(
+        return tools.map((toolSchema) =>
+          this.#functionBuilder.createFunctionFromSchema(
             toolSchema,
             serverName,
-          );
-          agentTools.push(func);
-        }
-      } else {
-        // If we can't get tools for a server, skip it with a warning
-        console.warn(`Failed to get tools for server:`, result.reason);
-      }
-    }
+          ),
+        );
+      });
 
     return agentTools;
   }

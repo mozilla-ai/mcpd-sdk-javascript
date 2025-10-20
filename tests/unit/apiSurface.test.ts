@@ -72,7 +72,7 @@ describe("API Surface - Complete Test Coverage", () => {
     expect(isHealthy).toBe(true);
   });
 
-  it("client.servers.foo.listTools()", async () => {
+  it("client.servers.foo.getTools()", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: "ok" }),
@@ -82,11 +82,11 @@ describe("API Surface - Complete Test Coverage", () => {
       json: async () => ({ tools: [{ name: "tool1" }] }),
     });
 
-    const tools = await client.servers.time!.listTools();
+    const tools = await client.servers.time!.getTools();
     expect(tools).toHaveLength(1);
   });
 
-  it('client.servers["foo"].listTools()', async () => {
+  it('client.servers["foo"].getTools()', async () => {
     const serverName = "time";
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -97,7 +97,7 @@ describe("API Surface - Complete Test Coverage", () => {
       json: async () => ({ tools: [{ name: "tool1" }] }),
     });
 
-    const tools = await client.servers[serverName]!.listTools();
+    const tools = await client.servers[serverName]!.getTools();
     expect(tools).toHaveLength(1);
   });
 
@@ -241,46 +241,6 @@ describe("API Surface - Complete Test Coverage", () => {
 
     const result = await client.servers[serverName]!.tools.get_time!({});
     expect(result).toEqual({ result: "12:00" });
-  });
-
-  it("client.getToolSchemas() - no options", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ["time"],
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        servers: [{ name: "time", status: "ok" }],
-      }),
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
-      }),
-    });
-
-    const schemas = await client.getToolSchemas();
-    expect(schemas[0]?.name).toBe("time__get_time");
-  });
-
-  it("client.getToolSchemas(options) - with servers filter", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        servers: [{ name: "time", status: "ok" }],
-      }),
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
-      }),
-    });
-
-    const schemas = await client.getToolSchemas({ servers: ["time"] });
-    expect(schemas[0]?.name).toBe("time__get_time");
   });
 
   it("client.getAgentTools()", async () => {
