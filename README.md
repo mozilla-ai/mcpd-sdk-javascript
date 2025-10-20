@@ -204,19 +204,6 @@ if (await client.servers[serverName].hasTool("get_current_time")) {
 }
 ```
 
-#### `client.generatePrompt(namespacedName, args?)`
-
-Generate a prompt by its namespaced name (in `serverName__promptName` format).
-
-```typescript
-// Generate a prompt with namespaced name
-const result = await client.generatePrompt("github__create_pr", {
-  title: "Fix bug",
-  description: "Fixed authentication issue",
-});
-// Returns: { messages: [...], description: "...", ... }
-```
-
 #### `client.servers.<server>.getPrompts()`
 
 Returns prompt schemas for a specific server.
