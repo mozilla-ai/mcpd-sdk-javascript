@@ -130,7 +130,7 @@ export class ServersNamespace {
  * const timeServer = client.servers.time; // Returns Server(...)
  *
  * // List available tools
- * const tools = await timeServer.listTools();
+ * const tools = await timeServer.getTools();
  *
  * // Call tools through the .tools namespace:
  * await timeServer.tools.get_current_time({ timezone: "UTC" })
@@ -196,7 +196,7 @@ export class Server {
   }
 
   /**
-   * List all tools available on this server.
+   * Get all tools available on this server.
    *
    * @returns Array of tool schemas
    * @throws {ServerNotFoundError} If the server doesn't exist
@@ -204,13 +204,13 @@ export class Server {
    *
    * @example
    * ```typescript
-   * const tools = await client.servers.time.listTools();
+   * const tools = await client.servers.time.getTools();
    * for (const tool of tools) {
    *   console.log(`${tool.name}: ${tool.description}`);
    * }
    * ```
    */
-  async listTools(): Promise<Tool[]> {
+  async getTools(): Promise<Tool[]> {
     return this.#getTools(this.#serverName);
   }
 
@@ -277,7 +277,7 @@ export class Server {
     if (!tool) {
       throw new ToolNotFoundError(
         `Tool '${toolName}' not found on server '${this.#serverName}'. ` +
-          `Use client.servers.${this.#serverName}.listTools() to see available tools.`,
+          `Use client.servers.${this.#serverName}.getTools() to see available tools.`,
         this.#serverName,
         toolName,
       );
@@ -542,7 +542,7 @@ export class ToolsNamespace {
           if (!tool) {
             throw new ToolNotFoundError(
               `Tool '${toolName}' not found on server '${target.#serverName}'. ` +
-                `Use client.servers.${target.#serverName}.listTools() to see available tools.`,
+                `Use client.servers.${target.#serverName}.getTools() to see available tools.`,
               target.#serverName,
               toolName,
             );

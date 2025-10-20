@@ -72,7 +72,7 @@ describe("API Surface - Complete Test Coverage", () => {
     expect(isHealthy).toBe(true);
   });
 
-  it("client.servers.foo.listTools()", async () => {
+  it("client.servers.foo.getTools()", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: "ok" }),
@@ -82,11 +82,11 @@ describe("API Surface - Complete Test Coverage", () => {
       json: async () => ({ tools: [{ name: "tool1" }] }),
     });
 
-    const tools = await client.servers.time!.listTools();
+    const tools = await client.servers.time!.getTools();
     expect(tools).toHaveLength(1);
   });
 
-  it('client.servers["foo"].listTools()', async () => {
+  it('client.servers["foo"].getTools()', async () => {
     const serverName = "time";
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -97,7 +97,7 @@ describe("API Surface - Complete Test Coverage", () => {
       json: async () => ({ tools: [{ name: "tool1" }] }),
     });
 
-    const tools = await client.servers[serverName]!.listTools();
+    const tools = await client.servers[serverName]!.getTools();
     expect(tools).toHaveLength(1);
   });
 
@@ -243,7 +243,7 @@ describe("API Surface - Complete Test Coverage", () => {
     expect(result).toEqual({ result: "12:00" });
   });
 
-  it("client.getToolSchemas() - no options", async () => {
+  it("client.getTools() - no options", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ["time"],
@@ -261,11 +261,11 @@ describe("API Surface - Complete Test Coverage", () => {
       }),
     });
 
-    const schemas = await client.getToolSchemas();
+    const schemas = await client.getTools();
     expect(schemas[0]?.name).toBe("time__get_time");
   });
 
-  it("client.getToolSchemas(options) - with servers filter", async () => {
+  it("client.getTools(options) - with servers filter", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -279,7 +279,7 @@ describe("API Surface - Complete Test Coverage", () => {
       }),
     });
 
-    const schemas = await client.getToolSchemas({ servers: ["time"] });
+    const schemas = await client.getTools({ servers: ["time"] });
     expect(schemas[0]?.name).toBe("time__get_time");
   });
 
