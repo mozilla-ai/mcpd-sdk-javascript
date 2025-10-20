@@ -243,46 +243,6 @@ describe("API Surface - Complete Test Coverage", () => {
     expect(result).toEqual({ result: "12:00" });
   });
 
-  it("client.getTools() - no options", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ["time"],
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        servers: [{ name: "time", status: "ok" }],
-      }),
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
-      }),
-    });
-
-    const schemas = await client.getTools();
-    expect(schemas[0]?.name).toBe("time__get_time");
-  });
-
-  it("client.getTools(options) - with servers filter", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        servers: [{ name: "time", status: "ok" }],
-      }),
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        tools: [{ name: "get_time", inputSchema: { type: "object" } }],
-      }),
-    });
-
-    const schemas = await client.getTools({ servers: ["time"] });
-    expect(schemas[0]?.name).toBe("time__get_time");
-  });
-
   it("client.getAgentTools()", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

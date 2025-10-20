@@ -318,10 +318,6 @@ export interface Resource {
   description?: string;
   mimeType?: string;
   _meta?: Record<string, unknown>;
-  // SDK additions for client-level aggregation.
-  _serverName?: string;
-  _resourceName?: string;
-  _uri?: string;
 }
 
 /**
@@ -398,9 +394,6 @@ export interface ResourceTemplate {
   description?: string;
   mimeType?: string;
   _meta?: Record<string, unknown>;
-  // SDK additions for client-level aggregation.
-  _serverName?: string;
-  _templateName?: string;
 }
 
 /**

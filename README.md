@@ -9,14 +9,15 @@ This SDK provides high-level and dynamic access to those tools, making it easy t
 ## Features
 
 - Discover and list available `mcpd` hosted MCP servers
-- Retrieve tool definitions and schemas for one or all servers
+- Retrieve tool, prompt, and resource definitions from individual servers
 - Dynamically invoke any tool using a clean, attribute-based syntax
-- Unified AI framework integration - works directly with LangChain JS and Vercel AI SDK
+- Unified AI framework integration - works directly with LangChain JS and Vercel AI SDK via `getAgentTools()`
 - Generate self-contained, framework-compatible tool functions without conversion layers
 - Multiple output formats (`'array'`, `'object'`, `'map'`) for different framework needs
 - Full TypeScript support with comprehensive type definitions and overloads
 - Minimal dependencies (`lru-cache` for caching, `zod` for schema validation)
 - Works in both Node.js and browser environments
+- Clean API wrapper over mcpd HTTP endpoints - no opinionated aggregation logic
 
 ## Installation
 
@@ -122,31 +123,6 @@ const servers = await client.listServers();
 // Returns: ['time', 'fetch', 'git']
 ```
 
-#### `client.getTools(options?)`
-
-Returns tool schemas from all (or specific) servers with names transformed to `serverName__toolName` format.
-
-**IMPORTANT**: Tool names are automatically transformed to prevent naming clashes and identify server origin. Original tool name `get_current_time` on server `time` becomes `time__get_current_time`.
-
-This is useful for:
-
-- MCP servers aggregating and re-exposing tools from multiple upstream servers
-- Tool inspection and discovery across all servers
-- Custom tooling that needs raw MCP tool schemas with unique names
-
-```typescript
-// Get all tools from all servers
-const allTools = await client.getTools();
-// Returns: [
-//   { name: "time__get_current_time", description: "...", inputSchema: {...} },
-//   { name: "fetch__fetch_url", description: "...", inputSchema: {...} },
-//   { name: "git__commit", description: "...", inputSchema: {...} }
-// ]
-
-// Get tools from specific servers only
-const someTools = await client.getTools({ servers: ["time", "fetch"] });
-```
-
 #### `client.servers.<server>.getTools()`
 
 Returns tool schemas for a specific server.
@@ -228,30 +204,6 @@ if (await client.servers[serverName].hasTool("get_current_time")) {
 }
 ```
 
-#### `client.getPrompts(options?)`
-
-Returns prompt schemas from all (or specific) servers with names transformed to `serverName__promptName` format.
-
-**IMPORTANT**: Prompt names are automatically transformed to prevent naming clashes and identify server origin. Original prompt name `create_pr` on server `github` becomes `github__create_pr`.
-
-This is useful for:
-
-- Aggregating prompts from multiple servers
-- Prompt inspection and discovery across all servers
-- Custom tooling that needs raw MCP prompt schemas with unique names
-
-```typescript
-// Get all prompts from all servers
-const allPrompts = await client.getPrompts();
-// Returns: [
-//   { name: "github__create_pr", description: "...", arguments: [...] },
-//   { name: "slack__post_message", description: "...", arguments: [...] }
-// ]
-
-// Get prompts from specific servers only
-const somePrompts = await client.getPrompts({ servers: ["github"] });
-```
-
 #### `client.generatePrompt(namespacedName, args?)`
 
 Generate a prompt by its namespaced name (in `serverName__promptName` format).
@@ -328,83 +280,6 @@ if (await client.servers[serverName].hasPrompt("create_pr")) {
     title: "Fix bug",
   });
 }
-```
-
-#### `client.getResources(options?)`
-
-Returns resource schemas from all (or specific) servers with names transformed to `serverName__resourceName` format.
-
-**IMPORTANT**: Resource names are automatically transformed to prevent naming clashes and identify server origin. Original resource name `readme` on server `github` becomes `github__readme`.
-
-This is useful for:
-
-- Aggregating resources from multiple servers
-- Resource inspection and discovery across all servers
-- Custom tooling that needs raw MCP resource schemas with unique names
-
-```typescript
-// Get all resources from all servers
-const allResources = await client.getResources();
-// Returns: [
-//   { name: "github__readme", uri: "file:///repo/README.md", _serverName: "github", ... },
-//   { name: "slack__channels", uri: "slack://channels", _serverName: "slack", ... }
-// ]
-
-// Get resources from specific servers only
-const someResources = await client.getResources({ servers: ["github"] });
-```
-
-#### `client.getResourceTemplates(options?)`
-
-Returns resource template schemas from all (or specific) servers with names transformed to `serverName__templateName` format.
-
-**IMPORTANT**: Template names are automatically transformed to prevent naming clashes and identify server origin. Original template name `file` on server `github` becomes `github__file`.
-
-This is useful for:
-
-- Aggregating resource templates from multiple servers
-- Template inspection and discovery across all servers
-- Understanding what parameterized resources are available
-
-```typescript
-// Get all resource templates from all servers
-const allTemplates = await client.getResourceTemplates();
-// Returns: [
-//   { name: "github__file", uriTemplate: "file:///{path}", _serverName: "github", ... }
-// ]
-
-// Get templates from specific servers only
-const someTemplates = await client.getResourceTemplates({
-  servers: ["github"],
-});
-```
-
-#### `client.readResource(namespacedName)`
-
-Read resource content by its namespaced name (in `serverName__resourceName` format).
-
-The SDK automatically populates an internal cache on first use. For better performance when reading multiple resources, you can optionally pre-populate the cache by calling `getResources()` first.
-
-```typescript
-// Read content by namespaced name - cache populated automatically if needed
-const contents = await client.readResource("github__readme");
-// Returns: [{ uri: "...", text: "# README\n...", mimeType: "text/markdown" }]
-
-for (const content of contents) {
-  if (content.text) {
-    console.log("Text content:", content.text);
-  } else if (content.blob) {
-    console.log(
-      "Binary content (base64):",
-      content.blob.substring(0, 50) + "...",
-    );
-  }
-}
-
-// For better performance when reading multiple resources, pre-populate the cache
-await client.getResources();
-const readme = await client.readResource("github__readme");
-const changelog = await client.readResource("github__changelog");
 ```
 
 #### `client.servers.<server>.getResources()`
