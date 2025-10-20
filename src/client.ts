@@ -45,6 +45,12 @@ import { FunctionBuilder, type AgentFunction } from "./functionBuilder";
 import { API_PATHS } from "./apiPaths";
 
 /**
+ * Maximum number of server health entries to cache.
+ * Prevents unbounded memory growth while allowing legitimate large-scale monitoring.
+ */
+const SERVER_HEALTH_CACHE_MAXSIZE = 100;
+
+/**
  * Client for interacting with MCP (Model Context Protocol) servers through an mcpd daemon.
  *
  * The McpdClient provides a high-level interface to discover, inspect, and invoke tools
@@ -106,10 +112,7 @@ export class McpdClient {
     // Setup health cache
     const healthCacheTtlMs = (options.healthCacheTtl ?? 10) * 1000; // Convert to milliseconds
     this.#serverHealthCache = createCache({
-      max: 100, // TODO: Extract to const like Python SDK see:
-      //  _SERVER_HEALTH_CACHE_MAXSIZE: int = 100
-      // """Maximum number of server health entries to cache.
-      // Prevents unbounded memory growth while allowing legitimate large-scale monitoring."""
+      max: SERVER_HEALTH_CACHE_MAXSIZE,
       ttl: healthCacheTtlMs,
     });
 
@@ -172,8 +175,8 @@ export class McpdClient {
         try {
           errorModel = JSON.parse(body) as ErrorModel;
         } catch {
-          // Not JSON, use text as detail
-          // TODO: This stinks do something in here.
+          // Response body is not valid JSON - fall through to fallback error handling below.
+          errorModel = null;
         }
 
         if (errorModel && errorModel.detail) {
