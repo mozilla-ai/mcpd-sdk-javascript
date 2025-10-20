@@ -263,67 +263,6 @@ export class McpdClient {
   }
 
   /**
-   * Generate a prompt from a template with the given arguments.
-   *
-   * IMPORTANT: The promptName must be in the format `serverName__promptName`.
-   * This is the same format returned by getPrompts().
-   *
-   * @param promptName - The fully qualified prompt name (serverName__promptName)
-   * @param args - Arguments to pass to the prompt template
-   * @returns The generated prompt response with description and messages
-   * @throws {Error} If the prompt name format is invalid
-   * @throws {ServerNotFoundError} If the specified server doesn't exist
-   * @throws {ServerUnhealthyError} If the server is not healthy
-   * @throws {ConnectionError} If unable to connect to the mcpd daemon
-   * @throws {TimeoutError} If the request times out
-   * @throws {McpdError} If the request fails
-   *
-   * @example
-   * ```typescript
-   * // First, get available prompts
-   * const prompts = await client.getPrompts();
-   * // prompts = [{ name: "github__create_pr", ... }]
-   *
-   * // Generate a prompt
-   * const result = await client.generatePrompt("github__create_pr", {
-   *   title: "Fix bug",
-   *   description: "Fixed the authentication issue"
-   * });
-   * console.log(result.messages); // Array of prompt messages
-   * ```
-   */
-  async generatePrompt(
-    promptName: string,
-    args?: Record<string, string>,
-  ): Promise<GeneratePromptResponseBody> {
-    // Parse the serverName__promptName format.
-    const parts = promptName.split("__");
-    if (parts.length < 2 || !parts[0] || !parts[1]) {
-      throw new Error(
-        `Invalid prompt name format: ${promptName}. Expected format: serverName__promptName`,
-      );
-    }
-
-    const serverName: string = parts[0];
-    const actualPromptName: string = parts.slice(1).join("__");
-
-    // Check server health first.
-    await this.#ensureServerHealthy(serverName);
-
-    const path = API_PATHS.PROMPT_GET_GENERATED(serverName, actualPromptName);
-    const requestBody: PromptGenerateArguments = {
-      arguments: args || {},
-    };
-
-    const response = await this.#request<GeneratePromptResponseBody>(path, {
-      method: "POST",
-      body: JSON.stringify(requestBody),
-    });
-
-    return response;
-  }
-
-  /**
    * Internal method to get tool schemas for a server.
    * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
