@@ -368,6 +368,401 @@ describe("McpdClient", () => {
     });
   });
 
+  describe("getAgentTools with tool filtering", () => {
+    // Standard mock data used across tool filtering tests.
+    const mockTimeAndMathTools = {
+      time: [
+        {
+          name: "get_current_time",
+          description: "Get current time",
+          inputSchema: {
+            type: "object",
+            properties: { timezone: { type: "string" } },
+            required: ["timezone"],
+          },
+        },
+      ],
+      math: [
+        {
+          name: "add",
+          description: "Add two numbers",
+          inputSchema: {
+            type: "object",
+            properties: {
+              a: { type: "number" },
+              b: { type: "number" },
+            },
+            required: ["a", "b"],
+          },
+        },
+        {
+          name: "multiply",
+          description: "Multiply two numbers",
+          inputSchema: {
+            type: "object",
+            properties: {
+              a: { type: "number" },
+              b: { type: "number" },
+            },
+            required: ["a", "b"],
+          },
+        },
+      ],
+    };
+
+    // Helper to set up standard mocks: listServers() + health + tools for each server.
+    function mockTimeAndMathServers() {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["time", "math"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "math",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTimeAndMathTools.time }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTimeAndMathTools.math }),
+      });
+    }
+
+    it("should filter by raw tool name", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({ tools: ["add"] });
+
+      expect(tools).toHaveLength(1);
+      expect(tools[0]?._toolName).toBe("add");
+      expect(tools[0]?.name).toBe("math__add");
+    });
+
+    it("should filter by multiple raw tool names", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({ tools: ["add", "multiply"] });
+
+      expect(tools).toHaveLength(2);
+      const toolNames = tools.map((t) => t._toolName);
+      expect(toolNames).toContain("add");
+      expect(toolNames).toContain("multiply");
+    });
+
+    it("should filter by prefixed tool name", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({
+        tools: ["time__get_current_time"],
+      });
+
+      expect(tools).toHaveLength(1);
+      expect(tools[0]?.name).toBe("time__get_current_time");
+      expect(tools[0]?._serverName).toBe("time");
+      expect(tools[0]?._toolName).toBe("get_current_time");
+    });
+
+    it("should handle mixed raw and prefixed formats", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({
+        tools: ["add", "time__get_current_time"],
+      });
+
+      expect(tools).toHaveLength(2);
+      const hasTimeTool = tools.some(
+        (t) => t.name === "time__get_current_time",
+      );
+      const hasAddTool = tools.some((t) => t._toolName === "add");
+
+      expect(hasTimeTool).toBe(true);
+      expect(hasAddTool).toBe(true);
+    });
+
+    it("should combine server and tool filtering", async () => {
+      // When servers are explicitly provided, listServers() is not called.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "math",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTimeAndMathTools.time }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockTimeAndMathTools.math }),
+      });
+
+      const tools = await client.getAgentTools({
+        servers: ["time", "math"],
+        tools: ["add", "get_current_time"],
+      });
+
+      expect(tools).toHaveLength(2);
+
+      const servers = new Set(tools.map((t) => t._serverName));
+      const toolNames = new Set(tools.map((t) => t._toolName));
+
+      expect([...servers].every((s) => ["time", "math"].includes(s))).toBe(
+        true,
+      );
+
+      expect(
+        [...toolNames].every((t) => ["add", "get_current_time"].includes(t)),
+      ).toBe(true);
+    });
+
+    it("should return empty array for non-existent tool", async () => {
+      const mockAllTools = {
+        time: [
+          {
+            name: "get_current_time",
+            description: "Get current time",
+            inputSchema: {
+              type: "object",
+              properties: { timezone: { type: "string" } },
+              required: ["timezone"],
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["time"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockAllTools.time }),
+      });
+
+      const tools = await client.getAgentTools({
+        tools: ["nonexistent_tool_xyz"],
+      });
+
+      expect(tools).toEqual([]);
+    });
+
+    it("should return empty array for empty tools list", async () => {
+      const mockAllTools = {
+        time: [
+          {
+            name: "get_current_time",
+            description: "Get current time",
+            inputSchema: {
+              type: "object",
+              properties: { timezone: { type: "string" } },
+              required: ["timezone"],
+            },
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["time"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "time",
+              status: "ok",
+              latency: "2ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ tools: mockAllTools.time }),
+      });
+
+      const tools = await client.getAgentTools({ tools: [] });
+
+      expect(tools).toEqual([]);
+    });
+
+    it("should work with object format", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({
+        tools: ["add"],
+        format: "object",
+      });
+
+      expect(tools).toBeTypeOf("object");
+      expect(tools).not.toBeInstanceOf(Array);
+      expect(Object.keys(tools)).toHaveLength(1);
+      expect(tools["math__add"]).toBeDefined();
+      expect(tools["math__add"]?._toolName).toBe("add");
+    });
+
+    it("should work with map format", async () => {
+      mockTimeAndMathServers();
+
+      const tools = await client.getAgentTools({
+        tools: ["add"],
+        format: "map",
+      });
+
+      expect(tools).toBeInstanceOf(Map);
+      expect(tools.size).toBe(1);
+      const addTool = tools.get("math__add");
+      expect(addTool).toBeDefined();
+      expect(addTool?._toolName).toBe("add");
+    });
+
+    it("should handle tool names containing double underscore", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["test"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "test",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: "my__special__tool",
+              description: "A tool with underscores in the name",
+              inputSchema: {
+                type: "object",
+                properties: {},
+              },
+            },
+          ],
+        }),
+      });
+
+      const rawFilter = await client.getAgentTools({
+        tools: ["my__special__tool"],
+      });
+      expect(rawFilter).toHaveLength(1);
+      expect(rawFilter[0]?._toolName).toBe("my__special__tool");
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["test"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "test",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: "my__special__tool",
+              description: "A tool with underscores in the name",
+              inputSchema: {
+                type: "object",
+                properties: {},
+              },
+            },
+          ],
+        }),
+      });
+
+      const prefixedFilter = await client.getAgentTools({
+        tools: ["test__my__special__tool"],
+      });
+      expect(prefixedFilter).toHaveLength(1);
+      expect(prefixedFilter[0]?.name).toBe("test__my__special__tool");
+    });
+  });
+
   describe("clearAgentToolsCache()", () => {
     it("should clear the function builder cache", () => {
       // This is more of an integration test to ensure the method exists and calls through

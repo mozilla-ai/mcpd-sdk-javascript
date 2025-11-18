@@ -239,6 +239,16 @@ export interface AgentToolsOptions {
   servers?: string[];
 
   /**
+   * Optional list of tool names to filter by. Supports both:
+   * - Raw tool names: 'get_current_time' (matches tool across all servers)
+   * - Server-prefixed names: 'time__get_current_time' (server + TOOL_SEPARATOR + tool)
+   * If not specified, returns all tools from selected servers.
+   * @example ['add', 'multiply']
+   * @example ['time__get_current_time', 'math__add']
+   */
+  tools?: string[];
+
+  /**
    * Output format for the tools.
    * - 'array': Returns array of functions (default, for LangChain)
    * - 'object': Returns object keyed by tool name (for Vercel AI SDK)
