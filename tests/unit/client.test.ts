@@ -761,6 +761,75 @@ describe("McpdClient", () => {
       expect(prefixedFilter).toHaveLength(1);
       expect(prefixedFilter[0]?.name).toBe("test__my__special__tool");
     });
+
+    it("should prefer prefixed format when filter is ambiguous", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ["my", "other"],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          servers: [
+            {
+              name: "my",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+            {
+              name: "other",
+              status: "ok",
+              latency: "1ms",
+              lastChecked: "2025-10-07T15:00:00Z",
+              lastSuccessful: "2025-10-07T15:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: "special__tool",
+              description: "Tool from 'my' server",
+              inputSchema: { type: "object", properties: {} },
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: "my__special__tool",
+              description: "Tool from 'other' server",
+              inputSchema: { type: "object", properties: {} },
+            },
+          ],
+        }),
+      });
+
+      const tools = await client.getAgentTools({
+        tools: ["my__special__tool"],
+      });
+
+      expect(tools).toHaveLength(2);
+
+      const prefixedMatch = tools.find((t) => t._serverName === "my");
+      expect(prefixedMatch?._toolName).toBe("special__tool");
+      expect(prefixedMatch?.name).toBe("my__special__tool");
+
+      const rawMatch = tools.find((t) => t._serverName === "other");
+      expect(rawMatch?._toolName).toBe("my__special__tool");
+      expect(rawMatch?.name).toBe("other__my__special__tool");
+    });
   });
 
   describe("clearAgentToolsCache()", () => {

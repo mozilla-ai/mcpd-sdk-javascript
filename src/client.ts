@@ -840,8 +840,12 @@ export class McpdClient {
    * Check if a tool matches the tool filter.
    *
    * Supports two formats:
-   * - Raw tool name: "get_current_time" (matches tool name only)
-   * - Server-prefixed name: "time__get_current_time" (server + TOOL_SEPARATOR + tool)
+   * - Raw tool name: "get_current_time" (matches across all servers)
+   * - Server-prefixed: "time__get_current_time" (matches specific server + tool)
+   *
+   * When a filter contains "__", it's first checked as server-prefixed (exact match).
+   * If that fails, it's checked as a raw tool name. This handles tools whose names
+   * contain "__" (e.g., "my__special__tool").
    *
    * @param tool The tool to check.
    * @param tools List of tool names/patterns to match against.
@@ -849,19 +853,13 @@ export class McpdClient {
    */
   #matchesToolFilter(tool: AgentFunction, tools: string[]): boolean {
     return tools.some((filterItem) => {
-      const separatorIndex = filterItem.indexOf(TOOL_SEPARATOR);
-      if (separatorIndex !== -1) {
-        const leftPart = filterItem.slice(0, separatorIndex).trim();
-        const rightPart = filterItem
-          .slice(separatorIndex + TOOL_SEPARATOR.length)
-          .trim();
-
-        if (leftPart && rightPart && filterItem === tool.name) {
-          return true;
-        }
+      if (filterItem.indexOf(TOOL_SEPARATOR) === -1) {
+        // Match against raw tool name
+        return filterItem === tool._toolName;
       }
 
-      return filterItem === tool._toolName;
+      // Try prefixed match first, then fall back to raw match
+      return filterItem === tool.name || filterItem === tool._toolName;
     });
   }
 }
