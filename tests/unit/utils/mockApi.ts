@@ -35,18 +35,27 @@ export function createFetchMock(routes: Record<string, unknown>): typeof fetch {
 
     if (match) {
       const [, payload] = match;
-      return { ok: true, json: async () => payload } as Response;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => payload,
+      } as Response;
     }
+
+    const payload = {
+      status: 404,
+      title: "Not Found",
+      detail: "Route not found",
+      type: "about:blank",
+    };
 
     return {
       ok: false,
       status: 404,
-      json: async () => ({
-        status: 404,
-        title: "Not Found",
-        detail: "Route not found",
-        type: "about:blank",
-      }),
+      statusText: "Not Found",
+      json: async () => payload,
+      text: async () => JSON.stringify(payload),
     } as Response;
   });
 
