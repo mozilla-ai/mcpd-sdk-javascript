@@ -51,6 +51,13 @@ import { API_PATHS } from "./apiPaths";
 const SERVER_HEALTH_CACHE_MAXSIZE = 100;
 
 /**
+ * Separator used between server name and tool name in qualified tool names.
+ * Format: `{serverName}{TOOL_SEPARATOR}{toolName}`
+ * Example: "time__get_current_time" where "time" is server and "get_current_time" is tool.
+ */
+const TOOL_SEPARATOR = "__";
+
+/**
  * Client for interacting with MCP (Model Context Protocol) servers through an mcpd daemon.
  *
  * The McpdClient provides a high-level interface to discover, inspect, and invoke tools
@@ -789,36 +796,70 @@ export class McpdClient {
   async getAgentTools(options?: {
     format?: "array";
     servers?: string[];
+    tools?: string[];
   }): Promise<AgentFunction[]>;
   async getAgentTools(options: {
     format: "object";
     servers?: string[];
+    tools?: string[];
   }): Promise<Record<string, AgentFunction>>;
   async getAgentTools(options: {
     format: "map";
     servers?: string[];
+    tools?: string[];
   }): Promise<Map<string, AgentFunction>>;
   async getAgentTools(
     options: AgentToolsOptions = {},
   ): Promise<
     AgentFunction[] | Record<string, AgentFunction> | Map<string, AgentFunction>
   > {
-    const { servers, format = "array" } = options;
+    const { servers, tools, format = "array" } = options;
 
-    // Get tools in array format (default internal representation)
-    const tools = await this.agentTools(servers);
+    const allTools = await this.agentTools(servers);
 
-    // Return in requested format
+    const filteredTools = tools
+      ? allTools.filter((tool) => this.#matchesToolFilter(tool, tools))
+      : allTools;
+
     switch (format) {
       case "object":
-        return Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+        return Object.fromEntries(
+          filteredTools.map((tool) => [tool.name, tool]),
+        );
 
       case "map":
-        return new Map(tools.map((tool) => [tool.name, tool]));
+        return new Map(filteredTools.map((tool) => [tool.name, tool]));
 
       case "array":
       default:
-        return tools;
+        return filteredTools;
     }
+  }
+
+  /**
+   * Check if a tool matches the tool filter.
+   *
+   * Supports two formats:
+   * - Raw tool name: "get_current_time" (matches across all servers)
+   * - Server-prefixed: "time__get_current_time" (matches specific server + tool)
+   *
+   * When a filter contains "__", it's first checked as server-prefixed (exact match).
+   * If that fails, it's checked as a raw tool name. This handles tools whose names
+   * contain "__" (e.g., "my__special__tool").
+   *
+   * @param tool The tool to check.
+   * @param tools List of tool names/patterns to match against.
+   * @returns True if the tool matches any item in the filter.
+   */
+  #matchesToolFilter(tool: AgentFunction, tools: string[]): boolean {
+    return tools.some((filterItem) => {
+      if (filterItem.indexOf(TOOL_SEPARATOR) === -1) {
+        // Match against raw tool name
+        return filterItem === tool._toolName;
+      }
+
+      // Try prefixed match first, then fall back to raw match
+      return filterItem === tool.name || filterItem === tool._toolName;
+    });
   }
 }

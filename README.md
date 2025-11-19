@@ -359,8 +359,15 @@ if (await client.isServerHealthy("time")) {
 
 Generate callable functions that work directly with AI agent frameworks. No conversion layers needed.
 
+**Why filter tools?**
+
+AI agents perform better with focused tool sets.
+Tool filtering enables progressive disclosure - operators can expose a subset of server tools via `mcpd` configuration,
+then agents can further narrow down to only the tools needed for their specific task.
+This prevents overwhelming the model's context window and improves response quality.
+
 ```typescript
-// Options: { servers?: string[], format?: 'array' | 'object' | 'map' }
+// Options: { servers?: string[], tools?: string[], format?: 'array' | 'object' | 'map' }
 // Default format is 'array' (for LangChain)
 
 // Use with LangChain JS (array format is default)
@@ -395,6 +402,28 @@ const result = await generateText({
 const timeTools = await client.getAgentTools({
   servers: ["time"],
   format: "array",
+});
+
+// Filter by tool names (cross-cutting across all servers)
+const mathTools = await client.getAgentTools({
+  tools: ["add", "multiply"],
+});
+
+// Filter by qualified tool names (server-specific)
+const specificTools = await client.getAgentTools({
+  tools: ["time__get_current_time", "math__add"],
+});
+
+// Combine server and tool filtering
+const filteredTools = await client.getAgentTools({
+  servers: ["time", "math"],
+  tools: ["add", "get_current_time"],
+});
+
+// Tool filtering works with different formats
+const toolsObject = await client.getAgentTools({
+  tools: ["add", "multiply"],
+  format: "object",
 });
 
 // Use with Map for efficient lookups
