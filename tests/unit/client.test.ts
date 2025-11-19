@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpdClient } from "../../src/client";
 import { ConnectionError, AuthenticationError } from "../../src/errors";
 import { HealthStatusHelpers } from "../../src/types";
+import { createFetchMock } from "./utils/mockApi";
+import { API_PATHS } from "../../src/apiPaths";
 
 describe("McpdClient", () => {
   let client: McpdClient;
@@ -860,6 +862,263 @@ describe("McpdClient", () => {
     it("should return false for non-transient statuses", () => {
       expect(HealthStatusHelpers.isTransient("ok")).toBe(false);
       expect(HealthStatusHelpers.isTransient("unreachable")).toBe(false);
+    });
+  });
+
+  describe("logging", () => {
+    let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+    let originalLogLevel: string | undefined;
+
+    beforeEach(() => {
+      consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      // Save original log level.
+      originalLogLevel = process.env.MCPD_LOG_LEVEL;
+    });
+
+    afterEach(() => {
+      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+      // Restore original log level.
+      if (originalLogLevel === undefined) {
+        delete process.env.MCPD_LOG_LEVEL;
+      } else {
+        process.env.MCPD_LOG_LEVEL = originalLogLevel;
+      }
+    });
+
+    it("should not log when MCPD_LOG_LEVEL is not set (default)", async () => {
+      // Ensure MCPD_LOG_LEVEL is not set.
+      // This means the default logger will be a noop.
+      delete process.env.MCPD_LOG_LEVEL;
+
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "unhealthy", status: "timeout" }, // Generates warning if logging enabled.
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const newClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+      });
+      await newClient.getAgentTools();
+
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+    });
+
+    it("should log warnings when MCPD_LOG_LEVEL is set to warn", async () => {
+      // Set MCPD_LOG_LEVEL to enable logging via environment variable.
+      process.env.MCPD_LOG_LEVEL = "warn";
+
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "unhealthy", status: "timeout" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const newClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+      });
+      await newClient.getAgentTools();
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'unhealthy' with status 'timeout'",
+      );
+    });
+
+    it("should warn when server is unhealthy", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "unhealthy", status: "timeout" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: { warn: customWarn },
+      });
+
+      await loggerClient.getAgentTools();
+
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'unhealthy' with status 'timeout'",
+      );
+    });
+
+    it("should warn when server does not exist", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "server1", status: "ok" },
+            // 'nonexistent' not in health response.
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("server1")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: { warn: customWarn },
+      });
+
+      await loggerClient.getAgentTools({ servers: ["server1", "nonexistent"] });
+
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping non-existent server 'nonexistent'",
+      );
+    });
+
+    it("should not warn when all servers are healthy", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["server1", "server2"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "server1", status: "ok" },
+            { name: "server2", status: "ok" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("server1")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+        [API_PATHS.SERVER_TOOLS("server2")]: {
+          tools: [{ name: "tool2", description: "Tool 2", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: { warn: customWarn },
+      });
+
+      await loggerClient.getAgentTools();
+
+      expect(customWarn).not.toHaveBeenCalled();
+    });
+
+    it("should log multiple warnings correctly", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: [
+          "healthy",
+          "timeout_server",
+          "unreachable_server",
+        ],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "timeout_server", status: "timeout" },
+            { name: "unreachable_server", status: "unreachable" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: { warn: customWarn },
+      });
+
+      await loggerClient.getAgentTools();
+
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'timeout_server' with status 'timeout'",
+      );
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'unreachable_server' with status 'unreachable'",
+      );
+      expect(customWarn).toHaveBeenCalledTimes(2);
+    });
+
+    it("should use custom logger when provided", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "unhealthy", status: "timeout" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+      const customLogger = {
+        warn: customWarn,
+      };
+
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: customLogger,
+      });
+
+      await loggerClient.getAgentTools();
+
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'unhealthy' with status 'timeout'",
+      );
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+    });
+
+    it("should support partial logger implementation", async () => {
+      global.fetch = createFetchMock({
+        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+        [API_PATHS.HEALTH_ALL]: {
+          servers: [
+            { name: "healthy", status: "ok" },
+            { name: "unhealthy", status: "timeout" },
+          ],
+        },
+        [API_PATHS.SERVER_TOOLS("healthy")]: {
+          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+        },
+      });
+
+      const customWarn = vi.fn();
+
+      const loggerClient = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+        logger: {
+          warn: customWarn,
+          // Other methods use default implementation.
+        },
+      });
+
+      await loggerClient.getAgentTools();
+
+      expect(customWarn).toHaveBeenCalledWith(
+        "Skipping unhealthy server 'unhealthy' with status 'timeout'",
+      );
     });
   });
 });

@@ -112,6 +112,110 @@ const client = new McpdClient({
 });
 ```
 
+### Logging
+
+The SDK includes optional logging for warnings about unhealthy or non-existent servers that are skipped during operations.
+
+**Important:** Logging is disabled by default. Only enable logging in non-MCP-server contexts. MCP servers using stdio transport for JSON-RPC communication should never enable logging, as it will contaminate stdout/stderr and break the protocol.
+
+#### Using Environment Variable
+
+Set the `MCPD_LOG_LEVEL` environment variable to control logging:
+
+```bash
+# Valid levels: trace, debug, info, warn, error, off (default)
+export MCPD_LOG_LEVEL=warn
+```
+
+**Available Log Levels:**
+
+| Level   | Description                                                     |
+| ------- | --------------------------------------------------------------- |
+| `trace` | Verbose information (includes `debug`, `info`, `warn`, `error`) |
+| `debug` | Debug information (includes `info`, `warn`, `error`)            |
+| `info`  | General informational messages (includes `warn`, `error`)       |
+| `warn`  | Warning messages only (includes `error`)                        |
+| `error` | Error messages only                                             |
+| `off`   | (...or unset) Logging disabled (default)                        |
+
+```typescript
+// Logging is automatically enabled based on MCPD_LOG_LEVEL
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+});
+```
+
+#### Using Custom Logger
+
+For advanced use cases, inject your own logger implementation.
+
+**Partial Logger Support:** You can provide only the methods you want to customize. Any omitted methods will fall back to the default logger, which respects `MCPD_LOG_LEVEL`.
+
+```typescript
+import { McpdClient } from "@mozilla-ai/mcpd";
+
+// Full custom logger
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    trace: (...args) => myLogger.trace(args),
+    debug: (...args) => myLogger.debug(args),
+    info: (...args) => myLogger.info(args),
+    warn: (...args) => myLogger.warn(args),
+    error: (...args) => myLogger.error(args),
+  },
+});
+
+// Partial logger: custom warn/error, default (MCPD_LOG_LEVEL-aware) for others
+const client2 = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    warn: (msg) => console.warn(`[mcpd] ${msg}`),
+    error: (msg) => console.error(`[mcpd] ${msg}`),
+    // trace, debug, info use default logger (respects MCPD_LOG_LEVEL)
+  },
+});
+```
+
+#### Disabling Logging
+
+To disable logging, simply ensure `MCPD_LOG_LEVEL` is unset or set to `off` (the default):
+
+```typescript
+// Logging is disabled by default (no configuration needed)
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+});
+```
+
+If you need to disable logging even when `MCPD_LOG_LEVEL` is set (rare case), provide a custom logger with no-op implementations:
+
+```typescript
+// Override MCPD_LOG_LEVEL to force disable
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    trace: () => {},
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  },
+});
+```
+
+When logging is enabled, warnings are emitted for:
+
+- Unhealthy servers that are skipped (e.g., status `timeout`, `unreachable`)
+- Non-existent servers specified in filter options
+
+Example warning messages:
+
+```text
+Skipping unhealthy server 'time' with status 'timeout'
+Skipping non-existent server 'unknown'
+```
+
 ### Core Methods
 
 #### `client.listServers()`

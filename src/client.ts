@@ -43,6 +43,7 @@ import { createCache } from "./utils/cache";
 import { ServersNamespace } from "./dynamicCaller";
 import { FunctionBuilder, type AgentFunction } from "./functionBuilder";
 import { API_PATHS } from "./apiPaths";
+import { createLogger, type Logger } from "./logger";
 
 /**
  * Maximum number of server health entries to cache.
@@ -94,6 +95,7 @@ export class McpdClient {
   readonly #timeout: number;
   readonly #serverHealthCache: LRUCache<string, ServerHealth | Error>;
   readonly #functionBuilder: FunctionBuilder;
+  readonly #logger: Logger;
   readonly #cacheableExceptions = new Set([
     ServerNotFoundError,
     ServerUnhealthyError,
@@ -111,19 +113,22 @@ export class McpdClient {
    * @param options - Configuration options for the client
    */
   constructor(options: McpdClientOptions) {
-    // Remove trailing slash from endpoint
+    // Remove trailing slash from endpoint.
     this.#endpoint = options.apiEndpoint.replace(/\/$/, "");
     this.#apiKey = options.apiKey;
     this.#timeout = options.timeout ?? 30000;
 
-    // Setup health cache
-    const healthCacheTtlMs = (options.healthCacheTtl ?? 10) * 1000; // Convert to milliseconds
+    // Setup health cache.
+    const healthCacheTtlMs = (options.healthCacheTtl ?? 10) * 1000; // Convert to milliseconds.
     this.#serverHealthCache = createCache({
       max: SERVER_HEALTH_CACHE_MAXSIZE,
       ttl: healthCacheTtlMs,
     });
 
-    // Initialize servers namespace and function builder with injected functions
+    // Setup logger (the default logger uses MCPD_LOG_LEVEL).
+    this.#logger = createLogger(options.logger);
+
+    // Initialize servers namespace and function builder with injected functions.
     this.servers = new ServersNamespace({
       performCall: this.#performCall.bind(this),
       getTools: this.#getToolsByServer.bind(this),
@@ -608,20 +613,33 @@ export class McpdClient {
    * This helper fetches server names (if not provided) and filters to only healthy servers.
    * Used by getToolSchemas(), getPrompts(), and agentTools() to avoid timeouts on failed servers.
    *
-   * @param servers - Optional array of server names. If not provided, fetches all servers.
-   * @returns Array of healthy server names
-   * @internal
+   * If logging is enabled, warnings are logged for servers that are skipped
+   * due to unhealthy status or non-existence.
+   *
+   * @param servers - Optional list of server names to filter. If not provided,
+   *                  checks health of all servers.
+   * @returns List of server names with 'ok' health status.
    */
   async #getHealthyServers(servers?: string[]): Promise<string[]> {
-    // Get server names if not provided.
-    const serverNames =
-      servers && servers.length > 0 ? servers : await this.listServers();
-
-    // Get health status and filter to healthy servers.
+    const serverNames = servers?.length ? servers : await this.listServers();
     const healthMap = await this.getServerHealth();
+
     return serverNames.filter((name) => {
       const health = healthMap[name];
-      return health && HealthStatusHelpers.isHealthy(health.status);
+
+      if (!health) {
+        this.#logger.warn(`Skipping non-existent server '${name}'`);
+        return false;
+      }
+
+      if (!HealthStatusHelpers.isHealthy(health.status)) {
+        this.#logger.warn(
+          `Skipping unhealthy server '${name}' with status '${health.status}'`,
+        );
+        return false;
+      }
+
+      return true;
     });
   }
 
@@ -704,9 +722,9 @@ export class McpdClient {
    * that can be passed to AI agent frameworks. Each function includes its schema
    * as metadata and handles the MCP communication internally.
    *
-   * This method automatically filters out unhealthy servers by checking their health
-   * status before fetching tools. Unhealthy servers are silently skipped to ensure
-   * the method returns quickly without waiting for timeouts on failed servers.
+   * This method automatically filters out unhealthy servers by checking their health status before fetching tools.
+   * Unhealthy servers are skipped (with optional warnings when logging is enabled) to ensure the
+   * method returns quickly without waiting for timeouts on failed servers.
    *
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
@@ -755,9 +773,9 @@ export class McpdClient {
    * that can be passed to AI agent frameworks. Each function includes its schema
    * as metadata and handles the MCP communication internally.
    *
-   * This method automatically filters out unhealthy servers by checking their health
-   * status before fetching tools. Unhealthy servers are silently skipped to ensure
-   * the method returns quickly without waiting for timeouts on failed servers.
+   * This method automatically filters out unhealthy servers by checking their health status before fetching tools.
+   * Unhealthy servers are skipped (with optional warnings when logging is enabled) to ensure the
+   * method returns quickly without waiting for timeouts on failed servers.
    *
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *

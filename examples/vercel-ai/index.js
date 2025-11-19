@@ -97,7 +97,7 @@ async function main() {
   } catch (error) {
     if (error instanceof McpdError) {
       console.error('------------------------------');
-      console.error(`[MCPD ERROR] ${error.message}`);
+      console.error(`[mcpd ERROR] ${error.message}`);
       console.error('------------------------------');
     } else if (error.code === 'ECONNREFUSED') {
       console.error('------------------------------');
