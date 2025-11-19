@@ -867,19 +867,16 @@ describe("McpdClient", () => {
 
   describe("logging", () => {
     let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
-    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
     let originalLogLevel: string | undefined;
 
     beforeEach(() => {
       consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       // Save original log level.
       originalLogLevel = process.env.MCPD_LOG_LEVEL;
     });
 
     afterEach(() => {
       consoleWarnSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
       // Restore original log level.
       if (originalLogLevel === undefined) {
         delete process.env.MCPD_LOG_LEVEL;
@@ -893,18 +890,21 @@ describe("McpdClient", () => {
       // This means the default logger will be a noop.
       delete process.env.MCPD_LOG_LEVEL;
 
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "unhealthy", status: "timeout" }, // Generates warning if logging enabled.
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "unhealthy", status: "timeout" }, // Generates warning if logging enabled.
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const newClient = new McpdClient({
         apiEndpoint: "http://localhost:8090",
@@ -918,18 +918,21 @@ describe("McpdClient", () => {
       // Set MCPD_LOG_LEVEL to enable logging via environment variable.
       process.env.MCPD_LOG_LEVEL = "warn";
 
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "unhealthy", status: "timeout" },
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "unhealthy", status: "timeout" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const newClient = new McpdClient({
         apiEndpoint: "http://localhost:8090",
@@ -942,18 +945,21 @@ describe("McpdClient", () => {
     });
 
     it("should warn when server is unhealthy", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "unhealthy", status: "timeout" },
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "unhealthy", status: "timeout" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
       const loggerClient = new McpdClient({
@@ -969,17 +975,20 @@ describe("McpdClient", () => {
     });
 
     it("should warn when server does not exist", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "server1", status: "ok" },
-            // 'nonexistent' not in health response.
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("server1")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "server1", status: "ok" },
+              // 'nonexistent' not in health response.
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("server1")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
       const loggerClient = new McpdClient({
@@ -995,21 +1004,24 @@ describe("McpdClient", () => {
     });
 
     it("should not warn when all servers are healthy", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["server1", "server2"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "server1", status: "ok" },
-            { name: "server2", status: "ok" },
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("server1")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-        [API_PATHS.SERVER_TOOLS("server2")]: {
-          tools: [{ name: "tool2", description: "Tool 2", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["server1", "server2"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "server1", status: "ok" },
+              { name: "server2", status: "ok" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("server1")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+          [API_PATHS.SERVER_TOOLS("server2")]: {
+            tools: [{ name: "tool2", description: "Tool 2", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
       const loggerClient = new McpdClient({
@@ -1023,23 +1035,26 @@ describe("McpdClient", () => {
     });
 
     it("should log multiple warnings correctly", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: [
-          "healthy",
-          "timeout_server",
-          "unreachable_server",
-        ],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "timeout_server", status: "timeout" },
-            { name: "unreachable_server", status: "unreachable" },
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: [
+            "healthy",
+            "timeout_server",
+            "unreachable_server",
           ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "timeout_server", status: "timeout" },
+              { name: "unreachable_server", status: "unreachable" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
       const loggerClient = new McpdClient({
@@ -1059,18 +1074,21 @@ describe("McpdClient", () => {
     });
 
     it("should use custom logger when provided", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "unhealthy", status: "timeout" },
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "unhealthy", status: "timeout" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
       const customLogger = {
@@ -1091,18 +1109,21 @@ describe("McpdClient", () => {
     });
 
     it("should support partial logger implementation", async () => {
-      global.fetch = createFetchMock({
-        [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
-        [API_PATHS.HEALTH_ALL]: {
-          servers: [
-            { name: "healthy", status: "ok" },
-            { name: "unhealthy", status: "timeout" },
-          ],
-        },
-        [API_PATHS.SERVER_TOOLS("healthy")]: {
-          tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
-        },
-      });
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["healthy", "unhealthy"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "healthy", status: "ok" },
+              { name: "unhealthy", status: "timeout" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("healthy")]: {
+            tools: [{ name: "tool1", description: "Tool 1", inputSchema: {} }],
+          },
+        }),
+      );
 
       const customWarn = vi.fn();
 
