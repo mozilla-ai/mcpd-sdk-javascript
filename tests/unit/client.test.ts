@@ -504,37 +504,27 @@ describe("McpdClient", () => {
     });
 
     it("should combine server and tool filtering", async () => {
-      // When servers are explicitly provided, listServers() is not called.
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          servers: [
-            {
-              name: "time",
-              status: "ok",
-              latency: "2ms",
-              lastChecked: "2025-10-07T15:00:00Z",
-              lastSuccessful: "2025-10-07T15:00:00Z",
-            },
-            {
-              name: "math",
-              status: "ok",
-              latency: "1ms",
-              lastChecked: "2025-10-07T15:00:00Z",
-              lastSuccessful: "2025-10-07T15:00:00Z",
-            },
-          ],
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["time", "math"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "time", status: "ok" },
+              { name: "math", status: "ok" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("time")]: {
+            tools: mockTimeAndMathTools.time,
+          },
+          [API_PATHS.SERVER_TOOLS("math")]: {
+            tools: mockTimeAndMathTools.math,
+          },
         }),
-      });
+      );
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ tools: mockTimeAndMathTools.time }),
-      });
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ tools: mockTimeAndMathTools.math }),
+      const client = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
       });
 
       const tools = await client.getAgentTools({
@@ -834,9 +824,162 @@ describe("McpdClient", () => {
     });
   });
 
+  describe("getAgentTools caching behavior", () => {
+    const mockTimeAndMathTools = {
+      time: [
+        {
+          name: "get_current_time",
+          description: "Get current time",
+          inputSchema: {
+            type: "object",
+            properties: { timezone: { type: "string" } },
+            required: ["timezone"],
+          },
+        },
+      ],
+      math: [
+        {
+          name: "add",
+          description: "Add two numbers",
+          inputSchema: {
+            type: "object",
+            properties: { a: { type: "number" }, b: { type: "number" } },
+            required: ["a", "b"],
+          },
+        },
+        {
+          name: "multiply",
+          description: "Multiply two numbers",
+          inputSchema: {
+            type: "object",
+            properties: { a: { type: "number" }, b: { type: "number" } },
+            required: ["a", "b"],
+          },
+        },
+      ],
+    };
+
+    it("should cache functions and reuse them on subsequent calls", async () => {
+      let fetchCallCount = 0;
+      const mockFn = vi.fn((url: string) => {
+        fetchCallCount++;
+        const mock = createFetchMock({
+          [API_PATHS.SERVERS]: ["time", "math"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "time", status: "ok" },
+              { name: "math", status: "ok" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("time")]: {
+            tools: mockTimeAndMathTools.time,
+          },
+          [API_PATHS.SERVER_TOOLS("math")]: {
+            tools: mockTimeAndMathTools.math,
+          },
+        });
+        return mock(url);
+      });
+
+      vi.stubGlobal("fetch", mockFn);
+
+      const client = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+      });
+
+      const firstCall = await client.getAgentTools();
+      expect(firstCall).toHaveLength(3);
+      const firstCallCount = fetchCallCount;
+
+      const secondCall = await client.getAgentTools();
+      expect(secondCall).toHaveLength(3);
+      expect(fetchCallCount).toBe(firstCallCount);
+    });
+
+    it("should return filtered results from cache without refetching", async () => {
+      vi.stubGlobal(
+        "fetch",
+        createFetchMock({
+          [API_PATHS.SERVERS]: ["time", "math"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "time", status: "ok" },
+              { name: "math", status: "ok" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("time")]: {
+            tools: mockTimeAndMathTools.time,
+          },
+          [API_PATHS.SERVER_TOOLS("math")]: {
+            tools: mockTimeAndMathTools.math,
+          },
+        }),
+      );
+
+      const client = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+      });
+
+      const allTools = await client.getAgentTools();
+      expect(allTools).toHaveLength(3);
+
+      const timeTools = await client.getAgentTools({ servers: ["time"] });
+      expect(timeTools).toHaveLength(1);
+      expect(timeTools[0]?._serverName).toBe("time");
+
+      const addTool = await client.getAgentTools({ tools: ["add"] });
+      expect(addTool).toHaveLength(1);
+      expect(addTool[0]?._toolName).toBe("add");
+
+      const mathAdd = await client.getAgentTools({
+        servers: ["math"],
+        tools: ["add"],
+      });
+      expect(mathAdd).toHaveLength(1);
+      expect(mathAdd[0]?._serverName).toBe("math");
+      expect(mathAdd[0]?._toolName).toBe("add");
+    });
+
+    it("should refetch when refreshCache is true", async () => {
+      let callCount = 0;
+      const mockFn = vi.fn((url: string) => {
+        callCount++;
+        const mock = createFetchMock({
+          [API_PATHS.SERVERS]: ["time", "math"],
+          [API_PATHS.HEALTH_ALL]: {
+            servers: [
+              { name: "time", status: "ok" },
+              { name: "math", status: "ok" },
+            ],
+          },
+          [API_PATHS.SERVER_TOOLS("time")]: {
+            tools: mockTimeAndMathTools.time,
+          },
+          [API_PATHS.SERVER_TOOLS("math")]: {
+            tools: mockTimeAndMathTools.math,
+          },
+        });
+        return mock(url);
+      });
+
+      vi.stubGlobal("fetch", mockFn);
+
+      const client = new McpdClient({
+        apiEndpoint: "http://localhost:8090",
+      });
+
+      await client.getAgentTools();
+      const firstCallCount = callCount;
+
+      await client.getAgentTools({ refreshCache: true });
+      const secondCallCount = callCount;
+
+      expect(secondCallCount).toBeGreaterThan(firstCallCount);
+    });
+  });
+
   describe("clearAgentToolsCache()", () => {
     it("should clear the function builder cache", () => {
-      // This is more of an integration test to ensure the method exists and calls through
       expect(() => client.clearAgentToolsCache()).not.toThrow();
     });
   });
@@ -978,6 +1121,7 @@ describe("McpdClient", () => {
       vi.stubGlobal(
         "fetch",
         createFetchMock({
+          [API_PATHS.SERVERS]: ["server1", "nonexistent"],
           [API_PATHS.HEALTH_ALL]: {
             servers: [
               { name: "server1", status: "ok" },

@@ -29,6 +29,9 @@ import {
   HealthResponse,
   ErrorModel,
   AgentToolsOptions,
+  ArrayAgentToolsOptions,
+  ObjectAgentToolsOptions,
+  MapAgentToolsOptions,
   Prompt,
   Prompts,
   GeneratePromptResponseBody,
@@ -70,6 +73,24 @@ const SERVER_HEALTH_CACHE_MAXSIZE = 100;
  * Example: "time__get_current_time" where "time" is server and "get_current_time" is tool.
  */
 const TOOL_SEPARATOR = "__";
+
+/**
+ * Type alias for agent functions in array format.
+ * @internal
+ */
+type AgentFunctionsArray = AgentFunction[];
+
+/**
+ * Type alias for agent functions in object format (keyed by function name).
+ * @internal
+ */
+type AgentFunctionsRecord = Record<string, AgentFunction>;
+
+/**
+ * Type alias for agent functions in Map format (keyed by function name).
+ * @internal
+ */
+type AgentFunctionsMap = Map<string, AgentFunction>;
 
 /**
  * Client for interacting with MCP (Model Context Protocol) servers through an mcpd daemon.
@@ -787,9 +808,7 @@ export class McpdClient {
       }
 
       throw new ToolExecutionError(
-        `Failed to execute tool '${toolName}' on server '${serverName}': ${
-          (error as Error).message
-        }`,
+        `Failed to execute tool '${toolName}' on server '${serverName}': ${(error as Error).message}`,
         serverName,
         toolName,
         undefined,
@@ -815,21 +834,19 @@ export class McpdClient {
   }
 
   /**
-   * Generate callable functions for use with AI agent frameworks.
+   * Fetch and cache callable functions from all healthy servers.
    *
-   * This method queries servers and creates self-contained, callable functions
+   * This method queries all healthy servers and creates self-contained, callable functions
    * that can be passed to AI agent frameworks. Each function includes its schema
    * as metadata and handles the MCP communication internally.
    *
-   * This method automatically filters out unhealthy servers by checking their health status before fetching tools.
-   * Unhealthy servers are skipped (with optional warnings when logging is enabled) to ensure the
-   * method returns quickly without waiting for timeouts on failed servers.
+   * Unhealthy servers are automatically filtered out and skipped (with optional warnings
+   * when logging is enabled) to ensure the method returns quickly without waiting for timeouts.
    *
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
+   * Functions are cached indefinitely until explicitly cleared.
    *
-   * @param servers - Optional list of server names to include. If not specified, includes all servers.
-   *
-   * @returns Array of callable functions with metadata. Only includes tools from healthy servers.
+   * @returns Array of callable functions with metadata from all healthy servers.
    *
    * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
@@ -838,17 +855,17 @@ export class McpdClient {
    *
    * @internal
    */
-  async #agentTools(servers?: string[]): Promise<AgentFunction[]> {
-    // If we have cached functions, return them immediately.
+  async #agentTools(): Promise<AgentFunction[]> {
+    // Return cached functions if available.
     const cachedFunctions = this.#functionBuilder.getCachedFunctions();
     if (cachedFunctions.length > 0) {
       return cachedFunctions;
     }
 
-    // Get healthy servers (fetches list if not provided, then filters by health).
-    const healthyServers = await this.#getHealthyServers(servers);
+    // Get all healthy servers.
+    const healthyServers = await this.#getHealthyServers();
 
-    // Fetch tools from all healthy servers in parallel
+    // Fetch tools from all healthy servers in parallel.
     const results = await Promise.allSettled(
       healthyServers.map(async (serverName) => ({
         serverName,
@@ -857,7 +874,6 @@ export class McpdClient {
     );
 
     // Build functions from tool schemas.
-    // Silently skip failed servers - they're already filtered by health checks.
     const agentTools: AgentFunction[] = results
       .filter((result) => result.status === "fulfilled")
       .flatMap((result) => {
@@ -889,10 +905,10 @@ export class McpdClient {
    *
    * Generated functions are cached for performance. Once cached, subsequent calls return
    * the cached functions immediately without refetching schemas, regardless of filter parameters.
-   * Use {@link clearAgentToolsCache()} to clear the cache and force regeneration when
-   * tool schemas have changed or you need to update the available tools.
+   * Use {@link clearAgentToolsCache()} to clear the cache, or set refreshCache to true
+   * to force regeneration when tool schemas have changed.
    *
-   * @param options - Options for generating agent tools (format, and server/tool filtering)
+   * @param options - Options for output format, server/tool filtering, and cache control
    *
    * @returns Functions in the requested format (array, object, or map).
    *          Only includes tools from healthy servers.
@@ -911,6 +927,9 @@ export class McpdClient {
    * // Get tools from specific servers
    * const tools = await client.getAgentTools({ servers: ['time', 'fetch'] });
    *
+   * // Force refresh from cache
+   * const freshTools = await client.getAgentTools({ refreshCache: true });
+   *
    * // Use with LangChain JS (array format)
    * const langchainTools = await client.getAgentTools({ format: 'array' });
    * const agent = await createOpenAIToolsAgent({ llm, tools: langchainTools, prompt });
@@ -923,47 +942,45 @@ export class McpdClient {
    * const result = await generateText({ model, tools: vercelTools, prompt });
    * ```
    */
-  async getAgentTools(options?: {
-    format?: "array";
-    servers?: string[];
-    tools?: string[];
-  }): Promise<AgentFunction[]>;
-  async getAgentTools(options: {
-    format: "object";
-    servers?: string[];
-    tools?: string[];
-  }): Promise<Record<string, AgentFunction>>;
-  async getAgentTools(options: {
-    format: "map";
-    servers?: string[];
-    tools?: string[];
-  }): Promise<Map<string, AgentFunction>>;
+  async getAgentTools(
+    options?: ArrayAgentToolsOptions,
+  ): Promise<AgentFunction[]>;
+  async getAgentTools(
+    options: ObjectAgentToolsOptions,
+  ): Promise<Record<string, AgentFunction>>;
+  async getAgentTools(
+    options: MapAgentToolsOptions,
+  ): Promise<Map<string, AgentFunction>>;
   async getAgentTools(
     options: AgentToolsOptions = {},
   ): Promise<
     AgentFunction[] | Record<string, AgentFunction> | Map<string, AgentFunction>
   > {
-    const { servers, tools, format = "array" } = options;
+    const { servers, tools, format = "array", refreshCache = false } = options;
 
-    const allTools = await this.#agentTools(servers);
+    // Clear cache and fetch fresh if requested.
+    if (refreshCache) this.#functionBuilder.clearCache();
 
-    const filteredTools = tools
-      ? allTools.filter((tool) => this.#matchesToolFilter(tool, tools))
-      : allTools;
+    // Fetch or retrieve cached functions from all healthy servers.
+    const allTools = await this.#agentTools();
 
-    switch (format) {
-      case "object":
-        return Object.fromEntries(
-          filteredTools.map((tool) => [tool.name, tool]),
-        );
+    // Filter results based on servers and tools parameters.
+    const filteredTools = allTools
+      .filter((tool) => !servers || servers.includes(tool._serverName))
+      .filter((tool) => !tools || this.#matchesToolFilter(tool, tools));
 
-      case "map":
-        return new Map(filteredTools.map((tool) => [tool.name, tool]));
+    // Format output as requested.
+    const formatters: {
+      array: (t: AgentFunctionsArray) => AgentFunctionsArray;
+      object: (t: AgentFunctionsArray) => AgentFunctionsRecord;
+      map: (t: AgentFunctionsArray) => AgentFunctionsMap;
+    } = {
+      array: (t) => t,
+      object: (t) => Object.fromEntries(t.map((tool) => [tool.name, tool])),
+      map: (t) => new Map(t.map((tool) => [tool.name, tool])),
+    };
 
-      case "array":
-      default:
-        return filteredTools;
-    }
+    return formatters[format](filteredTools);
   }
 
   /**

@@ -272,36 +272,79 @@ export interface McpdClientOptions {
 
 /**
  * Tool format types for cross-framework compatibility.
+ *
+ * @remarks
+ * Output format for agent tools.
+ * - 'array': Returns array of functions (default, for LangChain)
+ * - 'object': Returns object keyed by tool name (for Vercel AI SDK)
+ * - 'map': Returns Map keyed by tool name
  */
-export type ToolFormat = "array" | "object" | "map";
+export type AgentToolsFormat = "array" | "object" | "map";
 
 /**
- * Options for generating agent tools.
+ * Base options shared across all agent tools configurations.
  */
-export interface AgentToolsOptions {
+export interface BaseAgentToolsOptions {
   /**
-   * Optional list of server names to include. If not specified, includes all servers.
+   * List of server names to include. If not specified, or empty, should include all servers.
    */
   servers?: string[];
 
   /**
-   * Optional list of tool names to filter by. Supports both:
+   * List of tool names to filter by.
+   *
+   * @remarks
+   * Supports both:
    * - Raw tool names: 'get_current_time' (matches tool across all servers)
    * - Server-prefixed names: 'time__get_current_time' (server + TOOL_SEPARATOR + tool)
    * If not specified, returns all tools from selected servers.
+   *
    * @example ['add', 'multiply']
    * @example ['time__get_current_time', 'math__add']
    */
   tools?: string[];
 
   /**
-   * Output format for the tools.
-   * - 'array': Returns array of functions (default, for LangChain)
-   * - 'object': Returns object keyed by tool name (for Vercel AI SDK)
-   * - 'map': Returns Map keyed by tool name
+   * When true, clears the agent tools cache and fetches fresh tool schemas from servers.
+   * When false or undefined, returns cached functions if available.
+   *
+   * @defaultValue false
    */
-  format?: ToolFormat;
+  refreshCache?: boolean;
 }
+
+/**
+ * Options for getAgentTools with array format (default).
+ * Returns an array of agent functions.
+ */
+export interface ArrayAgentToolsOptions extends BaseAgentToolsOptions {
+  format?: "array";
+}
+
+/**
+ * Options for getAgentTools with object format.
+ * Returns an object keyed by tool name.
+ */
+export interface ObjectAgentToolsOptions extends BaseAgentToolsOptions {
+  format: "object";
+}
+
+/**
+ * Options for getAgentTools with map format.
+ * Returns a Map keyed by tool name.
+ */
+export interface MapAgentToolsOptions extends BaseAgentToolsOptions {
+  format: "map";
+}
+
+/**
+ * Options for generating agent tools.
+ * Discriminated union based on the format field.
+ */
+export type AgentToolsOptions =
+  | ArrayAgentToolsOptions
+  | ObjectAgentToolsOptions
+  | MapAgentToolsOptions;
 
 /**
  * Function signature for performing tool calls.
