@@ -1,0 +1,9 @@
+[[servers]]
+  name = "fetch"
+  package = "uvx::mcp-server-fetch@2025.4.7"
+  tools = ["fetch"]
+
+[[servers]]
+  name = "time"
+  package = "uvx::mcp-server-time@2025.8.4"
+  tools = ["get_current_time", "convert_time"]

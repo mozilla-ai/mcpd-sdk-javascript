@@ -73,7 +73,6 @@ const client = new McpdClient({
   apiEndpoint: "http://localhost:8090",
   apiKey: "optional-key", // Optional API key
   healthCacheTtl: 10, // Cache health checks for 10 seconds
-  serverCacheTtl: 60, // Cache server/tool metadata for 60 seconds
 });
 
 // Full type safety and autocomplete
@@ -107,9 +106,112 @@ const client = new McpdClient({
   apiEndpoint: "http://localhost:8090", // Required
   apiKey: "optional-key", // Optional: API key for authentication
   healthCacheTtl: 10, // Optional: TTL in seconds for health cache (default: 10)
-  serverCacheTtl: 60, // Optional: TTL in seconds for server/tools cache (default: 60)
   timeout: 30000, // Optional: Request timeout in ms (default: 30000)
 });
+```
+
+### Logging
+
+The SDK includes optional logging for warnings about unhealthy or non-existent servers that are skipped during operations.
+
+**Important:** Logging is disabled by default. Only enable logging in non-MCP-server contexts. MCP servers using stdio transport for JSON-RPC communication should never enable logging, as it will contaminate stdout/stderr and break the protocol.
+
+#### Using Environment Variable
+
+Set the `MCPD_LOG_LEVEL` environment variable to control logging:
+
+```bash
+# Valid levels: trace, debug, info, warn, error, off (default)
+export MCPD_LOG_LEVEL=warn
+```
+
+**Available Log Levels:**
+
+| Level   | Description                                                     |
+| ------- | --------------------------------------------------------------- |
+| `trace` | Verbose information (includes `debug`, `info`, `warn`, `error`) |
+| `debug` | Debug information (includes `info`, `warn`, `error`)            |
+| `info`  | General informational messages (includes `warn`, `error`)       |
+| `warn`  | Warning messages only (includes `error`)                        |
+| `error` | Error messages only                                             |
+| `off`   | (...or unset) Logging disabled (default)                        |
+
+```typescript
+// Logging is automatically enabled based on MCPD_LOG_LEVEL
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+});
+```
+
+#### Using Custom Logger
+
+For advanced use cases, inject your own logger implementation.
+
+**Partial Logger Support:** You can provide only the methods you want to customize. Any omitted methods will fall back to the default logger, which respects `MCPD_LOG_LEVEL`.
+
+```typescript
+import { McpdClient } from "@mozilla-ai/mcpd";
+
+// Full custom logger
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    trace: (...args) => myLogger.trace(args),
+    debug: (...args) => myLogger.debug(args),
+    info: (...args) => myLogger.info(args),
+    warn: (...args) => myLogger.warn(args),
+    error: (...args) => myLogger.error(args),
+  },
+});
+
+// Partial logger: custom warn/error, default (MCPD_LOG_LEVEL-aware) for others
+const client2 = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    warn: (msg) => console.warn(`[mcpd] ${msg}`),
+    error: (msg) => console.error(`[mcpd] ${msg}`),
+    // trace, debug, info use default logger (respects MCPD_LOG_LEVEL)
+  },
+});
+```
+
+#### Disabling Logging
+
+To disable logging, simply ensure `MCPD_LOG_LEVEL` is unset or set to `off` (the default):
+
+```typescript
+// Logging is disabled by default (no configuration needed)
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+});
+```
+
+If you need to disable logging even when `MCPD_LOG_LEVEL` is set (rare case), provide a custom logger with no-op implementations:
+
+```typescript
+// Override MCPD_LOG_LEVEL to force disable
+const client = new McpdClient({
+  apiEndpoint: "http://localhost:8090",
+  logger: {
+    trace: () => {},
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  },
+});
+```
+
+When logging is enabled, warnings are emitted for:
+
+- Unhealthy servers that are skipped (e.g., status `timeout`, `unreachable`)
+- Non-existent servers specified in filter options
+
+Example warning messages:
+
+```text
+Skipping unhealthy server 'time' with status 'timeout'
+Skipping non-existent server 'unknown'
 ```
 
 ### Core Methods
@@ -357,19 +459,28 @@ if (await client.isServerHealthy("time")) {
 
 #### `client.getAgentTools(options?)`
 
-Generate callable functions that work directly with AI agent frameworks. No conversion layers needed.
+Generate (cached) callable functions that work directly with AI agent frameworks. No conversion layers needed.
 
-**Why filter tools?**
+> [!IMPORTANT]  
+> If you want to get agent tools mutiple times using different filter options, you need to call `client.clearAgentToolsCache()` to force regeneration.
 
-AI agents perform better with focused tool sets.
+##### Supports filtering by servers and by tools
+
+AI agents perform better with focused tool sets they need to complete the given task.
 Tool filtering enables progressive disclosure - operators can expose a subset of server tools via `mcpd` configuration,
 then agents can further narrow down to only the tools needed for their specific task.
 This prevents overwhelming the model's context window and improves response quality.
 
+##### Examples
+
 ```typescript
 // Options: { servers?: string[], tools?: string[], format?: 'array' | 'object' | 'map' }
 // Default format is 'array' (for LangChain)
+```
 
+LangChain
+
+```typescript
 // Use with LangChain JS (array format is default)
 import { ChatOpenAI } from "@langchain/openai";
 
@@ -387,7 +498,11 @@ const agent = await createOpenAIToolsAgent({
   tools: langchainTools,
   prompt,
 });
+```
 
+Vercel-AI
+
+```typescript
 // Use with Vercel AI SDK (expects object format)
 import { generateText } from "ai";
 
@@ -397,34 +512,49 @@ const result = await generateText({
   tools: vercelTools,
   prompt: "What time is it in Tokyo?",
 });
+```
 
+Filtering examples
+
+```typescript
 // Filter to specific servers
 const timeTools = await client.getAgentTools({
   servers: ["time"],
   format: "array",
 });
+```
 
+```typescript
 // Filter by tool names (cross-cutting across all servers)
 const mathTools = await client.getAgentTools({
   tools: ["add", "multiply"],
 });
+```
 
+```typescript
 // Filter by qualified tool names (server-specific)
 const specificTools = await client.getAgentTools({
   tools: ["time__get_current_time", "math__add"],
 });
+```
 
+```typescript
 // Combine server and tool filtering
 const filteredTools = await client.getAgentTools({
   servers: ["time", "math"],
   tools: ["add", "get_current_time"],
 });
+```
 
+```typescript
 // Tool filtering works with different formats
 const toolsObject = await client.getAgentTools({
   tools: ["add", "multiply"],
   format: "object",
 });
+
+// Clear cached generated functions before recreating
+client.clearAgentToolsCache();
 
 // Use with Map for efficient lookups
 const toolMap = await client.getAgentTools({ format: "map" });
@@ -432,6 +562,9 @@ const timeTool = toolMap.get("time__get_current_time");
 if (timeTool) {
   const result = await timeTool({ timezone: "UTC" });
 }
+
+// Clear cached generated functions before recreating
+client.clearAgentToolsCache();
 
 // Each function has metadata for both frameworks
 const tools = await client.getAgentTools();
@@ -448,7 +581,7 @@ for (const tool of tools) {
 Clear the cache of generated agent tools functions.
 
 ```typescript
-// Clear cache to regenerate tools with latest schemas
+// Clear cache to regenerate tools with latest schemas, or latest client side server/tool filters.
 client.clearAgentToolsCache();
 const freshTools = await client.getAgentTools();
 ```

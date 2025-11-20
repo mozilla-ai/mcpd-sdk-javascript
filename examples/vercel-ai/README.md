@@ -4,7 +4,7 @@ This sample application demonstrates how to run `mcpd` in daemon mode to start M
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) (version 22 LTS or higher)
+- [Node.js](https://nodejs.org/) (version 22.10 LTS or higher)
 - [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via: `brew install --cask mozilla-ai/tap/mcpd`
 - `OPENAI_API_KEY` exported - this will be used by Vercel AI SDK
 

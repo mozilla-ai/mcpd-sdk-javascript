@@ -11,19 +11,65 @@ Basic example demonstrating core features of the mcpd JavaScript/TypeScript SDK.
 - Calling tools dynamically
 - Error handling
 
-## Prerequisites
+## Requirements
 
-- Node.js 22 LTS or higher
-- mcpd daemon running locally on port 8090
-- At least one MCP server configured (example uses 'time' server)
+- [Node.js](https://nodejs.org/) (version 22.10 LTS or higher)
+- [mcpd](https://mozilla-ai.github.io/mcpd/installation/) - install via: `brew install mcpd`
 
-## Installation
+## Installing mcpd
+
+The easiest way to install mcpd is via Homebrew:
+
+```bash
+brew tap mozilla-ai/tap
+brew install mcpd
+```
+
+For other installation methods, see the [mcpd installation guide](https://mozilla-ai.github.io/mcpd/installation/).
+
+## Starting mcpd
+
+### Execution context config file
+
+`~/.config/mcpd/secrets.dev.toml` is the file that is used to provide user specific configuration to MCP servers via `mcpd`.
+
+Here is an example of some custom configuration for the `mcp-server-time` (time) server:
+
+```toml
+[servers]
+  [servers.time]
+    args = ["--local-timezone=Europe/London"]
+```
+
+Run the following command to create this file if you don't want the time MCP Server to use defaults:
+
+```bash
+mcpd config args set time -- --local-timezone=Europe/London
+```
+
+### Project configuration file
+
+The `.mcpd.toml` file in this folder is used to start specific versions of MCP servers:
+
+```bash
+mcpd daemon --log-level=DEBUG --log-path=$(pwd)/mcpd.log
+```
+
+The `mcpd` daemon will start the servers, emitting messages to the terminal. You can tail the log to see more info:
+
+```bash
+tail -f mcpd.log
+```
+
+## Running the Example
+
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-## Running
+### 2. Run the example
 
 ```bash
 npm start

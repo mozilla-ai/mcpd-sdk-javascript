@@ -6,15 +6,35 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "lint": "npm run format:check && eslint . && npm run typecheck",
+    "lint:fix": "npm run format && eslint . --fix && npm run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/core": "^0.3.0",
-    "@langchain/openai": "^0.3.0",
+    "@langchain/core": "^1.0.6",
+    "@langchain/openai": "^1.1.2",
     "@mozilla-ai/mcpd": "file:../.."
   },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^16.4.0",
+    "jiti": "^2.6.1",
+    "prettier": "^3.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.46.0"
+  },
+  "packageManager": "npm@11.6.2",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.10.0"
   },
   "keywords": [
     "mcp",

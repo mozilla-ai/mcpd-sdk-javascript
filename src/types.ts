@@ -2,6 +2,8 @@
  * Type definitions for the mcpd SDK.
  */
 
+import type { Logger } from "./logger";
+
 /**
  * Enumeration of possible MCP server health statuses.
  */
@@ -207,21 +209,65 @@ export interface McpdClientOptions {
 
   /**
    * TTL in seconds for caching server health checks.
-   * Default: 10
    */
   healthCacheTtl?: number;
 
   /**
-   * TTL in seconds for caching server list and tool schemas.
-   * Default: 60
-   */
-  serverCacheTtl?: number;
-
-  /**
    * Request timeout in milliseconds.
-   * Default: 30000 (30 seconds)
    */
   timeout?: number;
+
+  /**
+   * Optional custom logger for SDK warnings and errors.
+   *
+   * If not provided, uses default logger (disabled by default).
+   * Logging can be enabled by setting the MCPD_LOG_LEVEL environment variable.
+   *
+   * Supports partial implementations - any omitted methods fall back to the
+   * default logger, which respects MCPD_LOG_LEVEL.
+   *
+   * NOTE: It is recommended that you only enable logging in non-MCP-server contexts.
+   * MCP servers using stdio transport for JSON-RPC communication should avoid enabling logging
+   * to avoid contaminating stdout/stderr.
+   *
+   * @example
+   * ```typescript
+   * // Use default logger (controlled by MCPD_LOG_LEVEL env var).
+   * const client = new McpdClient({ apiEndpoint: "http://localhost:8090" });
+   *
+   * // Inject full custom logger.
+   * const client = new McpdClient({
+   *   apiEndpoint: "http://localhost:8090",
+   *   logger: myCustomLogger,
+   * });
+   *
+   * // Partial logger: custom warn/error, default (MCPD_LOG_LEVEL-aware) for others.
+   * const client = new McpdClient({
+   *   apiEndpoint: "http://localhost:8090",
+   *   logger: {
+   *     warn: (msg) => myLogger.warn(`[mcpd] ${msg}`),
+   *     error: (msg) => myLogger.error(`[mcpd] ${msg}`),
+   *     // trace, debug, info use default logger (respects MCPD_LOG_LEVEL)
+   *   },
+   * });
+   *
+   * // Disable logging: ensure MCPD_LOG_LEVEL is unset or set to 'off' (default).
+   * const client = new McpdClient({ apiEndpoint: "http://localhost:8090" });
+   *
+   * // Override MCPD_LOG_LEVEL (disable even if env var is set).
+   * const client = new McpdClient({
+   *   apiEndpoint: "http://localhost:8090",
+   *   logger: {
+   *     trace: () => {},
+   *     debug: () => {},
+   *     info: () => {},
+   *     warn: () => {},
+   *     error: () => {},
+   *   },
+   * });
+   * ```
+   */
+  logger?: Partial<Logger>;
 }
 
 /**
