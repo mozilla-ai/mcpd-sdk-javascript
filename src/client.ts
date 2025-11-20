@@ -839,6 +839,12 @@ export class McpdClient {
    * @internal
    */
   async #agentTools(servers?: string[]): Promise<AgentFunction[]> {
+    // If we have cached functions, return them immediately.
+    const cachedFunctions = this.#functionBuilder.getCachedFunctions();
+    if (cachedFunctions.length > 0) {
+      return cachedFunctions;
+    }
+
     // Get healthy servers (fetches list if not provided, then filters by health).
     const healthyServers = await this.#getHealthyServers(servers);
 
@@ -881,9 +887,10 @@ export class McpdClient {
    *
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
-   * The result of function agent tools is cached on first call for performance.
-   * Use {@link clearAgentToolsCache()} to force regeneration.
-   * For example, if servers or tools have changed, or you want to generate functions for a different set of servers/tools.
+   * Generated functions are cached for performance. Once cached, subsequent calls return
+   * the cached functions immediately without refetching schemas, regardless of filter parameters.
+   * Use {@link clearAgentToolsCache()} to clear the cache and force regeneration when
+   * tool schemas have changed or you need to update the available tools.
    *
    * @param options - Options for generating agent tools (format, and server/tool filtering)
    *

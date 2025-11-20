@@ -404,4 +404,13 @@ export class FunctionBuilder {
   getCacheSize(): number {
     return this.#functionCache.size;
   }
+
+  /**
+   * Get all cached functions.
+   *
+   * @returns Array of all cached agent functions, or empty array if cache is empty
+   */
+  getCachedFunctions(): AgentFunction[] {
+    return Array.from(this.#functionCache.values());
+  }
 }
