@@ -461,8 +461,9 @@ if (await client.isServerHealthy("time")) {
 
 Generate (cached) callable functions that work directly with AI agent frameworks. No conversion layers needed.
 
-> [!IMPORTANT]  
-> If you want to get agent tools mutiple times using different filter options, you need to call `client.clearAgentToolsCache()` to force regeneration.
+> [!IMPORTANT]
+> Generated functions are cached for performance. Once cached, subsequent calls return cached functions regardless of filter parameters.
+> To force regeneration, either call `client.clearAgentToolsCache()` first, or use the `refreshCache: true` option.
 
 ##### Supports filtering by servers and by tools
 
@@ -474,8 +475,8 @@ This prevents overwhelming the model's context window and improves response qual
 ##### Examples
 
 ```typescript
-// Options: { servers?: string[], tools?: string[], format?: 'array' | 'object' | 'map' }
-// Default format is 'array' (for LangChain)
+// Options: { servers?: string[], tools?: string[], format?: 'array' | 'object' | 'map', refreshCache?: boolean }
+// Default format is 'array' (for LangChain), refreshCache defaults to false
 ```
 
 LangChain
@@ -553,9 +554,6 @@ const toolsObject = await client.getAgentTools({
   format: "object",
 });
 
-// Clear cached generated functions before recreating
-client.clearAgentToolsCache();
-
 // Use with Map for efficient lookups
 const toolMap = await client.getAgentTools({ format: "map" });
 const timeTool = toolMap.get("time__get_current_time");
@@ -563,8 +561,8 @@ if (timeTool) {
   const result = await timeTool({ timezone: "UTC" });
 }
 
-// Clear cached generated functions before recreating
-client.clearAgentToolsCache();
+// Force refresh from cache to get latest schemas
+const freshTools = await client.getAgentTools({ refreshCache: true });
 
 // Each function has metadata for both frameworks
 const tools = await client.getAgentTools();
