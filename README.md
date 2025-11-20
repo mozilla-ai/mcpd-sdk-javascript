@@ -73,7 +73,6 @@ const client = new McpdClient({
   apiEndpoint: "http://localhost:8090",
   apiKey: "optional-key", // Optional API key
   healthCacheTtl: 10, // Cache health checks for 10 seconds
-  serverCacheTtl: 60, // Cache server/tool metadata for 60 seconds
 });
 
 // Full type safety and autocomplete
@@ -107,7 +106,6 @@ const client = new McpdClient({
   apiEndpoint: "http://localhost:8090", // Required
   apiKey: "optional-key", // Optional: API key for authentication
   healthCacheTtl: 10, // Optional: TTL in seconds for health cache (default: 10)
-  serverCacheTtl: 60, // Optional: TTL in seconds for server/tools cache (default: 60)
   timeout: 30000, // Optional: Request timeout in ms (default: 30000)
 });
 ```
@@ -461,19 +459,28 @@ if (await client.isServerHealthy("time")) {
 
 #### `client.getAgentTools(options?)`
 
-Generate callable functions that work directly with AI agent frameworks. No conversion layers needed.
+Generate (cached) callable functions that work directly with AI agent frameworks. No conversion layers needed.
 
-**Why filter tools?**
+> [!IMPORTANT]  
+> If you want to get agent tools mutiple times using different filter options, you need to call `client.clearAgentToolsCache()` to force regeneration.
 
-AI agents perform better with focused tool sets.
+##### Supports filtering by servers and by tools
+
+AI agents perform better with focused tool sets they need to complete the given task.
 Tool filtering enables progressive disclosure - operators can expose a subset of server tools via `mcpd` configuration,
 then agents can further narrow down to only the tools needed for their specific task.
 This prevents overwhelming the model's context window and improves response quality.
 
+##### Examples
+
 ```typescript
 // Options: { servers?: string[], tools?: string[], format?: 'array' | 'object' | 'map' }
 // Default format is 'array' (for LangChain)
+```
 
+LangChain
+
+```typescript
 // Use with LangChain JS (array format is default)
 import { ChatOpenAI } from "@langchain/openai";
 
@@ -491,7 +498,11 @@ const agent = await createOpenAIToolsAgent({
   tools: langchainTools,
   prompt,
 });
+```
 
+Vercel-AI
+
+```typescript
 // Use with Vercel AI SDK (expects object format)
 import { generateText } from "ai";
 
@@ -501,34 +512,49 @@ const result = await generateText({
   tools: vercelTools,
   prompt: "What time is it in Tokyo?",
 });
+```
 
+Filtering examples
+
+```typescript
 // Filter to specific servers
 const timeTools = await client.getAgentTools({
   servers: ["time"],
   format: "array",
 });
+```
 
+```typescript
 // Filter by tool names (cross-cutting across all servers)
 const mathTools = await client.getAgentTools({
   tools: ["add", "multiply"],
 });
+```
 
+```typescript
 // Filter by qualified tool names (server-specific)
 const specificTools = await client.getAgentTools({
   tools: ["time__get_current_time", "math__add"],
 });
+```
 
+```typescript
 // Combine server and tool filtering
 const filteredTools = await client.getAgentTools({
   servers: ["time", "math"],
   tools: ["add", "get_current_time"],
 });
+```
 
+```typescript
 // Tool filtering works with different formats
 const toolsObject = await client.getAgentTools({
   tools: ["add", "multiply"],
   format: "object",
 });
+
+// Clear cached generated functions before recreating
+client.clearAgentToolsCache();
 
 // Use with Map for efficient lookups
 const toolMap = await client.getAgentTools({ format: "map" });
@@ -536,6 +562,9 @@ const timeTool = toolMap.get("time__get_current_time");
 if (timeTool) {
   const result = await timeTool({ timezone: "UTC" });
 }
+
+// Clear cached generated functions before recreating
+client.clearAgentToolsCache();
 
 // Each function has metadata for both frameworks
 const tools = await client.getAgentTools();
@@ -552,7 +581,7 @@ for (const tool of tools) {
 Clear the cache of generated agent tools functions.
 
 ```typescript
-// Clear cache to regenerate tools with latest schemas
+// Clear cache to regenerate tools with latest schemas, or latest client side server/tool filters.
 client.clearAgentToolsCache();
 const freshTools = await client.getAgentTools();
 ```

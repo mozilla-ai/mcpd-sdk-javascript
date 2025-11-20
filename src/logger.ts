@@ -12,9 +12,21 @@
  */
 
 /**
- * Valid log levels for MCPD_LOG_LEVEL environment variable.
+ * Valid {@link LogLevel} values for MCPD_LOG_LEVEL environment variable.
  */
-export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "off";
+export const LogLevels = {
+  TRACE: "trace" as const,
+  DEBUG: "debug" as const,
+  INFO: "info" as const,
+  WARN: "warn" as const,
+  ERROR: "error" as const,
+  OFF: "off" as const,
+};
+
+/**
+ * Log level type.
+ */
+export type LogLevel = (typeof LogLevels)[keyof typeof LogLevels];
 
 /**
  * Logger interface defining the SDK's logging contract.
@@ -73,7 +85,7 @@ const ranks: Record<LogLevel, number> = {
 // Defaults to "off" if unrecognized.
 function resolve(raw: string | undefined): LogLevel {
   const candidate = raw?.toLowerCase() as LogLevel | undefined;
-  return candidate && candidate in ranks ? candidate : "off";
+  return candidate && candidate in ranks ? candidate : LogLevels.OFF;
 }
 
 // Lazily resolve the level at call time to support testing.
@@ -85,28 +97,31 @@ function getLevel(): LogLevel {
 
 // Default logger implementation using console methods.
 function defaultLogger(): Logger {
-  const OFF: LogLevel = "off";
-
   return {
     trace: (...args) => {
       const lvl = getLevel();
-      if (lvl !== OFF && ranks[lvl] <= ranks.trace) console.trace(...args);
+      if (lvl !== LogLevels.OFF && ranks[lvl] <= ranks.trace)
+        console.trace(...args);
     },
     debug: (...args) => {
       const lvl = getLevel();
-      if (lvl !== OFF && ranks[lvl] <= ranks.debug) console.debug(...args);
+      if (lvl !== LogLevels.OFF && ranks[lvl] <= ranks.debug)
+        console.debug(...args);
     },
     info: (...args) => {
       const lvl = getLevel();
-      if (lvl !== OFF && ranks[lvl] <= ranks.info) console.info(...args);
+      if (lvl !== LogLevels.OFF && ranks[lvl] <= ranks.info)
+        console.info(...args);
     },
     warn: (...args) => {
       const lvl = getLevel();
-      if (lvl !== OFF && ranks[lvl] <= ranks.warn) console.warn(...args);
+      if (lvl !== LogLevels.OFF && ranks[lvl] <= ranks.warn)
+        console.warn(...args);
     },
     error: (...args) => {
       const lvl = getLevel();
-      if (lvl !== OFF && ranks[lvl] <= ranks.error) console.error(...args);
+      if (lvl !== LogLevels.OFF && ranks[lvl] <= ranks.error)
+        console.error(...args);
     },
   };
 }
@@ -118,7 +133,7 @@ function defaultLogger(): Logger {
  * Supports partial implementations - any omitted methods will fall back to the
  * default logger, which respects the MCPD_LOG_LEVEL environment variable.
  *
- * @param impl - Optional custom Logger implementation or partial implementation.
+ * @param impl - Custom Logger implementation or partial implementation.
  *               If not provided, uses default logger controlled by MCPD_LOG_LEVEL.
  *               If partially provided, custom methods are used and omitted methods
  *               fall back to default logger (which respects MCPD_LOG_LEVEL).

@@ -260,7 +260,7 @@ describe("McpdClient", () => {
     });
   });
 
-  describe("agentTools()", () => {
+  describe("getAgentTools() basic functionality", () => {
     it("should generate callable functions for all tools", async () => {
       const mockAllTools = {
         time: [

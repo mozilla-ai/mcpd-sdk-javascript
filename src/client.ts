@@ -46,6 +46,19 @@ import { API_PATHS } from "./apiPaths";
 import { createLogger, type Logger } from "./logger";
 
 /**
+ * Default timeout for API requests to mcpd, in seconds.
+ */
+const REQUEST_TIMEOUT_SECONDS = 30;
+
+/**
+ * Default TTL for server health cache entries, in seconds.
+ *
+ * @remarks
+ * Used to avoid excessive health check requests while keeping data reasonably fresh.
+ */
+const SERVER_HEALTH_CACHE_TTL_SECONDS = 10;
+
+/**
  * Maximum number of server health entries to cache.
  * Prevents unbounded memory growth while allowing legitimate large-scale monitoring.
  */
@@ -77,7 +90,6 @@ const TOOL_SEPARATOR = "__";
  *   apiEndpoint: 'http://localhost:8090',
  *   apiKey: 'optional-key',
  *   healthCacheTtl: 10,
- *   serverCacheTtl: 60
  * });
  *
  * // List available servers
@@ -113,13 +125,18 @@ export class McpdClient {
    * @param options - Configuration options for the client
    */
   constructor(options: McpdClientOptions) {
+    // Helper for time conversion.
+    const toMs = (s: number) => s * 1000; // seconds to milliseconds
+
     // Remove trailing slash from endpoint.
     this.#endpoint = options.apiEndpoint.replace(/\/$/, "");
     this.#apiKey = options.apiKey;
-    this.#timeout = options.timeout ?? 30000;
+    this.#timeout = options.timeout ?? toMs(REQUEST_TIMEOUT_SECONDS);
 
     // Setup health cache.
-    const healthCacheTtlMs = (options.healthCacheTtl ?? 10) * 1000; // Convert to milliseconds.
+    const healthCacheTtlMs = toMs(
+      options.healthCacheTtl ?? SERVER_HEALTH_CACHE_TTL_SECONDS,
+    );
     this.#serverHealthCache = createCache({
       max: SERVER_HEALTH_CACHE_MAXSIZE,
       ttl: healthCacheTtlMs,
@@ -146,8 +163,15 @@ export class McpdClient {
    *
    * @param path - The API path (e.g., '/servers', '/servers/{server_name}/tools')
    * @param options - Request options
+   *
    * @returns The JSON response from the daemon
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
+   * @internal
    */
   async #request<T = unknown>(
     path: string,
@@ -265,6 +289,10 @@ export class McpdClient {
    * Get a list of all configured MCP servers.
    *
    * @returns Array of server names
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
    *
    * @example
@@ -278,16 +306,23 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to get tool schemas for a server.
+   * Get tool schemas for a server.
+   *
+   * @privateRemarks
    * Used by dependency injection for ServersNamespace and internally for getAgentTools.
    *
    * @param serverName - Server name to get tools for
+   *
    * @returns Tool schemas for the specified server
+   *
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #getToolsByServer(serverName: string): Promise<Tool[]> {
@@ -308,17 +343,24 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to get prompt schemas for a server.
+   * Get prompt schemas for a server.
+   *
+   * @privateRemarks
    * Used internally for getPromptSchemas.
    *
    * @param serverName - Server name to get prompts for
-   * @param cursor - Optional cursor for pagination
+   * @param cursor - Cursor for pagination
+   *
    * @returns Prompt schemas for the specified server
+   *
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #getPromptsByServer(
@@ -347,16 +389,24 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to generate a prompt on a server.
+   * Generate a prompt on a server.
    *
-   * This method is used internally by:
+   * @privateRemarks
+   * Used internally by:
    * - PromptsNamespace (via dependency injection)
    * - Server.generatePrompt() (via dependency injection)
    *
    * @param serverName - The name of the server
    * @param promptName - The exact name of the prompt
    * @param args - The prompt arguments
+   *
    * @returns The generated prompt response
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #generatePromptInternal(
@@ -381,17 +431,24 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to get resource schemas for a server.
+   * Get resource schemas for a server.
+   *
+   * @privateRemarks
    * Used internally for getResources and by dependency injection for ServersNamespace.
    *
    * @param serverName - Server name to get resources for
-   * @param cursor - Optional cursor for pagination
+   * @param cursor - Cursor for pagination
+   *
    * @returns Resource schemas for the specified server
+   *
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #getResourcesByServer(
@@ -420,17 +477,24 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to get resource template schemas for a server.
+   * Get resource template schemas for a server.
+   *
+   * @privateRemarks
    * Used internally for getResourceTemplates and by dependency injection for ServersNamespace.
    *
    * @param serverName - Server name to get resource templates for
-   * @param cursor - Optional cursor for pagination
+   * @param cursor - Cursor for pagination
+   *
    * @returns Resource template schemas for the specified server
+   *
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #getResourceTemplatesByServer(
@@ -459,17 +523,24 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to read resource content from a server.
+   * Read resource content from a server.
+   *
+   * @privateRemarks
    * Used by dependency injection for ServersNamespace.
    *
    * @param serverName - Server name to read resource from
    * @param uri - The resource URI
+   *
    * @returns Array of resource contents (text or blob)
+   *
    * @throws {ServerNotFoundError} If the specified server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #readResourceByServer(
@@ -487,9 +558,13 @@ export class McpdClient {
   /**
    * Get health information for one or all servers.
    *
-   * @param serverName - Optional server name to get health for
+   * @param serverName - Server name to get health for, or undefined for all servers
+   *
    * @returns Health information for the specified server or all servers
-   * @throws {ServerNotFoundError} If the specified server doesn't exist
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
    * @throws {McpdError} If the request fails
    *
    * @example
@@ -560,7 +635,13 @@ export class McpdClient {
    * Check if a specific server is healthy.
    *
    * @param serverName - The name of the server to check
+   *
    * @returns True if the server is healthy, false otherwise
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
    *
    * @example
    * ```typescript
@@ -585,8 +666,14 @@ export class McpdClient {
    * Ensure a server is healthy before performing an operation.
    *
    * @param serverName - The name of the server to check
+   *
    * @throws {ServerNotFoundError} If the server doesn't exist
    * @throws {ServerUnhealthyError} If the server is not healthy
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
    */
   async #ensureServerHealthy(serverName: string): Promise<void> {
     const health = await this.getServerHealth(serverName);
@@ -608,17 +695,20 @@ export class McpdClient {
   }
 
   /**
-   * Get list of healthy servers from optional server names.
+   * Get list of healthy servers.
    *
-   * This helper fetches server names (if not provided) and filters to only healthy servers.
-   * Used by getToolSchemas(), getPrompts(), and agentTools() to avoid timeouts on failed servers.
+   * @remarks
+   * If logging is enabled, warnings are logged for servers that do not exist or are unhealthy.
    *
-   * If logging is enabled, warnings are logged for servers that are skipped
-   * due to unhealthy status or non-existence.
+   * @param servers - List of server names to use for health checking.
+   *                  If not provided, or empty, checks health for all servers.
    *
-   * @param servers - Optional list of server names to filter. If not provided,
-   *                  checks health of all servers.
    * @returns List of server names with 'ok' health status.
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
    */
   async #getHealthyServers(servers?: string[]): Promise<string[]> {
     const serverNames = servers?.length ? servers : await this.listServers();
@@ -644,17 +734,26 @@ export class McpdClient {
   }
 
   /**
-   * Internal method to perform a tool call on a server.
+   * Perform a tool call on a server.
    *
-   * This method is used internally by:
+   * @privateRemarks
+   * Used internally by:
    * - ToolsNamespace (via dependency injection)
    * - FunctionBuilder (via dependency injection)
    *
    * @param serverName - The name of the server
    * @param toolName - The exact name of the tool
    * @param args - The tool arguments
+   *
    * @returns The tool's response
+   *
    * @throws {ToolExecutionError} If the tool execution fails
+   *
+   * @throws {AuthenticationError} If API key was present and authentication fails
+   * @throws {ConnectionError} If unable to connect to the mcpd daemon
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   *
    * @internal
    */
   async #performCall(
@@ -716,7 +815,7 @@ export class McpdClient {
   }
 
   /**
-   * Generate callable functions for use with AI agent frameworks (internal).
+   * Generate callable functions for use with AI agent frameworks.
    *
    * This method queries servers and creates self-contained, callable functions
    * that can be passed to AI agent frameworks. Each function includes its schema
@@ -729,15 +828,17 @@ export class McpdClient {
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
    * @param servers - Optional list of server names to include. If not specified, includes all servers.
+   *
    * @returns Array of callable functions with metadata. Only includes tools from healthy servers.
    *
+   * @throws {AuthenticationError} If API key was present and authentication fails
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
-   * @throws {TimeoutError} If requests to the daemon time out
-   * @throws {AuthenticationError} If API key authentication fails
-   * @throws {McpdError} If unable to retrieve health status, server list, or generate functions
+   * @throws {TimeoutError} If the request times out
+   * @throws {McpdError} If the request fails
+   *
    * @internal
    */
-  async agentTools(servers?: string[]): Promise<AgentFunction[]> {
+  async #agentTools(servers?: string[]): Promise<AgentFunction[]> {
     // Get healthy servers (fetches list if not provided, then filters by health).
     const healthyServers = await this.#getHealthyServers(servers);
 
@@ -769,21 +870,25 @@ export class McpdClient {
   /**
    * Generate callable functions for use with AI agent frameworks.
    *
-   * This method queries servers and creates self-contained, callable functions
+   * This method queries servers to create and cache self-contained, callable functions
    * that can be passed to AI agent frameworks. Each function includes its schema
    * as metadata and handles the MCP communication internally.
    *
+   * @remarks
    * This method automatically filters out unhealthy servers by checking their health status before fetching tools.
    * Unhealthy servers are skipped (with optional warnings when logging is enabled) to ensure the
    * method returns quickly without waiting for timeouts on failed servers.
    *
    * Tool fetches from multiple servers are executed concurrently for optimal performance.
    *
-   * The generated functions are cached for performance. Use clearAgentToolsCache()
-   * to force regeneration if servers or tools have changed.
+   * The result of function agent tools is cached on first call for performance.
+   * Use {@link clearAgentToolsCache()} to force regeneration.
+   * For example, if servers or tools have changed, or you want to generate functions for a different set of servers/tools.
    *
-   * @param options - Options for generating agent tools (format and server filtering)
-   * @returns Functions in the requested format (array, object, or map). Only includes tools from healthy servers.
+   * @param options - Options for generating agent tools (format, and server/tool filtering)
+   *
+   * @returns Functions in the requested format (array, object, or map).
+   *          Only includes tools from healthy servers.
    *
    * @throws {ConnectionError} If unable to connect to the mcpd daemon
    * @throws {TimeoutError} If requests to the daemon time out
@@ -833,7 +938,7 @@ export class McpdClient {
   > {
     const { servers, tools, format = "array" } = options;
 
-    const allTools = await this.agentTools(servers);
+    const allTools = await this.#agentTools(servers);
 
     const filteredTools = tools
       ? allTools.filter((tool) => this.#matchesToolFilter(tool, tools))
@@ -861,13 +966,17 @@ export class McpdClient {
    * - Raw tool name: "get_current_time" (matches across all servers)
    * - Server-prefixed: "time__get_current_time" (matches specific server + tool)
    *
+   * @remarks
    * When a filter contains "__", it's first checked as server-prefixed (exact match).
    * If that fails, it's checked as a raw tool name. This handles tools whose names
    * contain "__" (e.g., "my__special__tool").
    *
-   * @param tool The tool to check.
-   * @param tools List of tool names/patterns to match against.
-   * @returns True if the tool matches any item in the filter.
+   * @param tool The tool to match.
+   * @param tools List of tool names to match against.
+   *
+   * @returns True if a match is found in tools, based on the predicate.
+   *
+   * @internal
    */
   #matchesToolFilter(tool: AgentFunction, tools: string[]): boolean {
     return tools.some((filterItem) => {

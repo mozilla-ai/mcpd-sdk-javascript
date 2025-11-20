@@ -209,19 +209,11 @@ export interface McpdClientOptions {
 
   /**
    * TTL in seconds for caching server health checks.
-   * Default: 10
    */
   healthCacheTtl?: number;
 
   /**
-   * TTL in seconds for caching server list and tool schemas.
-   * Default: 60
-   */
-  serverCacheTtl?: number;
-
-  /**
    * Request timeout in milliseconds.
-   * Default: 30000 (30 seconds)
    */
   timeout?: number;
 
