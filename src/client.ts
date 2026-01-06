@@ -19,6 +19,10 @@ import {
   ServerUnhealthyError,
   ToolExecutionError,
   TimeoutError,
+  PipelineError,
+  PIPELINE_FLOW_REQUEST,
+  PIPELINE_FLOW_RESPONSE,
+  type PipelineFlow,
 } from "./errors";
 import {
   HealthStatusHelpers,
@@ -73,6 +77,19 @@ const SERVER_HEALTH_CACHE_MAXSIZE = 100;
  * Example: "time__get_current_time" where "time" is server and "get_current_time" is tool.
  */
 const TOOL_SEPARATOR = "__";
+
+/**
+ * Header name for mcpd pipeline error type.
+ */
+const MCPD_ERROR_TYPE_HEADER = "Mcpd-Error-Type";
+
+/**
+ * Maps mcpd error type header values to pipeline flows.
+ */
+const PIPELINE_ERROR_FLOWS: Record<string, PipelineFlow> = {
+  "request-pipeline-failure": PIPELINE_FLOW_REQUEST,
+  "response-pipeline-failure": PIPELINE_FLOW_RESPONSE,
+};
 
 /**
  * Type alias for agent functions in array format.
@@ -234,6 +251,26 @@ export class McpdClient {
         } catch {
           // Response body is not valid JSON - fall through to fallback error handling below.
           errorModel = null;
+        }
+
+        // Check for pipeline failure (500 with Mcpd-Error-Type header).
+        if (response.status === 500) {
+          const errorType = response.headers
+            .get(MCPD_ERROR_TYPE_HEADER)
+            ?.toLowerCase();
+
+          const flow = errorType ? PIPELINE_ERROR_FLOWS[errorType] : undefined;
+
+          if (flow) {
+            const message = errorModel?.detail || body || "Pipeline failure";
+
+            throw new PipelineError(
+              message,
+              undefined, // serverName - enriched by caller if available.
+              undefined, // operation - enriched by caller if available.
+              flow,
+            );
+          }
         }
 
         if (errorModel && errorModel.detail) {
@@ -803,6 +840,17 @@ export class McpdClient {
       // Return the response as-is (already parsed or not a string)
       return response;
     } catch (error) {
+      // Enrich PipelineError with server/tool context.
+      if (error instanceof PipelineError) {
+        throw new PipelineError(
+          error.message,
+          serverName,
+          `${serverName}.${toolName}`,
+          error.pipelineFlow,
+          error.cause as Error | undefined,
+        );
+      }
+
       if (error instanceof McpdError) {
         throw error;
       }
