@@ -1304,26 +1304,12 @@ describe("McpdClient", () => {
         text: async () => "Response processing failed\n",
       });
 
-      await expect(client.listServers()).rejects.toThrow(PipelineError);
+      const error = await client.listServers().catch((e: unknown) => e);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: "Internal Server Error",
-        headers: new Headers({
-          "Mcpd-Error-Type": "response-pipeline-failure",
-        }),
-        text: async () => "Response processing failed\n",
-      });
-
-      try {
-        await client.listServers();
-      } catch (error) {
-        expect(error).toBeInstanceOf(PipelineError);
-        const pipelineError = error as PipelineError;
-        expect(pipelineError.pipelineFlow).toBe("response");
-        expect(pipelineError.message).toContain("Response processing failed");
-      }
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
+      expect(pipelineError.message).toContain("Response processing failed");
     });
 
     it("should throw PipelineError for request pipeline failure", async () => {
@@ -1337,14 +1323,12 @@ describe("McpdClient", () => {
         text: async () => "Request processing failed\n",
       });
 
-      try {
-        await client.listServers();
-      } catch (error) {
-        expect(error).toBeInstanceOf(PipelineError);
-        const pipelineError = error as PipelineError;
-        expect(pipelineError.pipelineFlow).toBe("request");
-        expect(pipelineError.message).toContain("Request processing failed");
-      }
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("request");
+      expect(pipelineError.message).toContain("Request processing failed");
     });
 
     it("should throw McpdError for 500 without Mcpd-Error-Type header", async () => {
@@ -1356,12 +1340,10 @@ describe("McpdClient", () => {
         text: async () => "Internal Server Error",
       });
 
-      try {
-        await client.listServers();
-      } catch (error) {
-        expect(error).not.toBeInstanceOf(PipelineError);
-        expect(error).toBeInstanceOf(McpdError);
-      }
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(PipelineError);
+      expect(error).toBeInstanceOf(McpdError);
     });
 
     it("should handle case-insensitive header value", async () => {
@@ -1375,13 +1357,11 @@ describe("McpdClient", () => {
         text: async () => "Response processing failed\n",
       });
 
-      try {
-        await client.listServers();
-      } catch (error) {
-        expect(error).toBeInstanceOf(PipelineError);
-        const pipelineError = error as PipelineError;
-        expect(pipelineError.pipelineFlow).toBe("response");
-      }
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
     });
 
     it("should enrich PipelineError with server and tool context in performCall", async () => {
@@ -1425,16 +1405,16 @@ describe("McpdClient", () => {
         text: async () => "Response processing failed\n",
       });
 
-      try {
-        await client.servers.time!.tools.get_current_time!({ timezone: "UTC" });
-      } catch (error) {
-        expect(error).toBeInstanceOf(PipelineError);
-        const pipelineError = error as PipelineError;
-        expect(pipelineError.pipelineFlow).toBe("response");
-        expect(pipelineError.serverName).toBe("time");
-        expect(pipelineError.operation).toBe("time.get_current_time");
-        expect(pipelineError.message).toContain("Response processing failed");
-      }
+      const error = await client.servers.time!.tools.get_current_time!({
+        timezone: "UTC",
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
+      expect(pipelineError.serverName).toBe("time");
+      expect(pipelineError.operation).toBe("time.get_current_time");
+      expect(pipelineError.message).toContain("Response processing failed");
     });
 
     it("should not throw PipelineError for other 500 errors", async () => {
@@ -1448,12 +1428,10 @@ describe("McpdClient", () => {
         text: async () => "Some other error",
       });
 
-      try {
-        await client.listServers();
-      } catch (error) {
-        expect(error).not.toBeInstanceOf(PipelineError);
-        expect(error).toBeInstanceOf(McpdError);
-      }
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(PipelineError);
+      expect(error).toBeInstanceOf(McpdError);
     });
   });
 });
