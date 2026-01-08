@@ -1,6 +1,6 @@
 {
   "name": "@mozilla-ai/mcpd",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "JavaScript/TypeScript SDK for interacting with mcpd",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
