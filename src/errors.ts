@@ -8,6 +8,23 @@
 import type { ErrorModel } from "./types";
 
 /**
+ * Pipeline flow constant for request processing failures.
+ */
+export const PIPELINE_FLOW_REQUEST = "request" as const;
+
+/**
+ * Pipeline flow constant for response processing failures.
+ */
+export const PIPELINE_FLOW_RESPONSE = "response" as const;
+
+/**
+ * Pipeline flow indicating where in the pipeline the failure occurred.
+ */
+export type PipelineFlow =
+  | typeof PIPELINE_FLOW_REQUEST
+  | typeof PIPELINE_FLOW_RESPONSE;
+
+/**
  * Base exception for all mcpd SDK errors.
  *
  * This exception wraps all errors that occur during interaction with the mcpd daemon,
@@ -198,6 +215,77 @@ export class TimeoutError extends McpdError {
     this.name = "TimeoutError";
     this.operation = operation;
     this.timeout = timeout;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/**
+ * Raised when required pipeline processing fails.
+ *
+ * This indicates that required processing failed in the mcpd pipeline.
+ * The error occurs when a required plugin (such as authentication, validation,
+ * audit logging, monitoring, or response transformation) fails during request
+ * or response processing.
+ *
+ * Pipeline Flow Distinction:
+ * - **response-pipeline-failure**: The upstream request was processed (the tool
+ *   was called), but results cannot be returned due to a required response
+ *   processing step failure. Note: This does not indicate whether the tool
+ *   itself succeeded or failed - only that the response cannot be delivered.
+ *
+ * - **request-pipeline-failure**: The request was rejected before reaching the
+ *   upstream server due to a required request processing step failure (such as
+ *   authentication, authorization, validation, or rate limiting plugin failure).
+ *
+ * This typically indicates a problem with a plugin or an external system
+ * that a plugin depends on (e.g., audit service, authentication provider).
+ * Retrying is unlikely to help as this usually indicates a configuration
+ * or dependency problem rather than a transient failure.
+ *
+ * @example
+ * ```typescript
+ * import { McpdClient, PipelineError } from '@mozilla-ai/mcpd';
+ *
+ * const client = new McpdClient({ apiEndpoint: 'http://localhost:8090' });
+ *
+ * try {
+ *   const result = await client.servers.time.tools.get_current_time();
+ * } catch (error) {
+ *   if (error instanceof PipelineError) {
+ *     console.log(`Pipeline failure: ${error.message}`);
+ *     console.log(`Flow: ${error.pipelineFlow}`);
+ *
+ *     if (error.pipelineFlow === 'response') {
+ *       console.log('Tool was called but results cannot be delivered');
+ *     } else {
+ *       console.log('Request was rejected by pipeline');
+ *       console.log('Check authentication, authorization, or rate limiting');
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * @remarks
+ * This exception indicates a problem with a plugin or its dependencies, not
+ * with your request or the tool itself.
+ */
+export class PipelineError extends McpdError {
+  public readonly serverName: string | undefined;
+  public readonly operation: string | undefined;
+  public readonly pipelineFlow: PipelineFlow | undefined;
+
+  constructor(
+    message: string,
+    serverName?: string,
+    operation?: string,
+    pipelineFlow?: PipelineFlow,
+    cause?: Error,
+  ) {
+    super(message, cause);
+    this.name = "PipelineError";
+    this.serverName = serverName;
+    this.operation = operation;
+    this.pipelineFlow = pipelineFlow;
     Error.captureStackTrace(this, this.constructor);
   }
 }

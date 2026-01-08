@@ -609,12 +609,20 @@ import {
   ToolExecutionError, // Tool execution failed
   ValidationError, // Input validation failed
   TimeoutError, // Operation timed out
+  PipelineError, // Pipeline processing failed
 } from "@mozilla-ai/mcpd";
 
 try {
   const result = await client.servers.unknown.tools.tool();
 } catch (error) {
-  if (error instanceof ToolNotFoundError) {
+  if (error instanceof PipelineError) {
+    // Pipeline failure - a required plugin failed during processing.
+    console.error(`Pipeline ${error.pipelineFlow} failure:`, error.message);
+    if (error.pipelineFlow === "response") {
+      // Tool was called but results cannot be delivered.
+      console.error("A required plugin failed during response processing");
+    }
+  } else if (error instanceof ToolNotFoundError) {
     console.error(
       `Tool not found: ${error.toolName} on server ${error.serverName}`,
     );
@@ -625,6 +633,20 @@ try {
   }
 }
 ```
+
+### PipelineError
+
+The `PipelineError` is thrown when mcpd's plugin pipeline fails. This indicates a problem with a plugin or an external system that a plugin depends on (e.g., audit service, authentication provider), not a problem with your request or the tool itself.
+
+- **Response Pipeline Failure** (`pipelineFlow === 'response'`): The upstream request was processed (the tool was called), but results cannot be returned because a required plugin (like audit logging) failed during response processing. This does not indicate whether the tool itself succeeded or failed.
+- **Request Pipeline Failure** (`pipelineFlow === 'request'`): The request was rejected before reaching the upstream server because a required plugin (like authentication) failed during request processing.
+
+Properties:
+
+- `message: string` - Descriptive error message
+- `serverName?: string` - The server name (when called through tool execution)
+- `operation?: string` - The operation (e.g., "time.get_current_time")
+- `pipelineFlow?: 'request' | 'response'` - Which pipeline flow failed
 
 ## Development
 

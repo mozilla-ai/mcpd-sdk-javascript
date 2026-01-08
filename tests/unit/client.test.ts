@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpdClient } from "../../src/client";
-import { ConnectionError, AuthenticationError } from "../../src/errors";
+import {
+  ConnectionError,
+  AuthenticationError,
+  McpdError,
+  PipelineError,
+} from "../../src/errors";
 import { HealthStatusHelpers } from "../../src/types";
 import { createFetchMock } from "./utils/mockApi";
 import { API_PATHS } from "../../src/apiPaths";
@@ -1284,6 +1289,149 @@ describe("McpdClient", () => {
       expect(customWarn).toHaveBeenCalledWith(
         "Skipping unhealthy server 'unhealthy' with status 'timeout'",
       );
+    });
+  });
+
+  describe("PipelineError handling", () => {
+    it("should throw PipelineError for response pipeline failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({
+          "Mcpd-Error-Type": "response-pipeline-failure",
+        }),
+        text: async () => "Response processing failed\n",
+      });
+
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
+      expect(pipelineError.message).toContain("Response processing failed");
+    });
+
+    it("should throw PipelineError for request pipeline failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({
+          "Mcpd-Error-Type": "request-pipeline-failure",
+        }),
+        text: async () => "Request processing failed\n",
+      });
+
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("request");
+      expect(pipelineError.message).toContain("Request processing failed");
+    });
+
+    it("should throw McpdError for 500 without Mcpd-Error-Type header", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers(),
+        text: async () => "Internal Server Error",
+      });
+
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(PipelineError);
+      expect(error).toBeInstanceOf(McpdError);
+    });
+
+    it("should handle case-insensitive header value", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({
+          "Mcpd-Error-Type": "RESPONSE-PIPELINE-FAILURE",
+        }),
+        text: async () => "Response processing failed\n",
+      });
+
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
+    });
+
+    it("should enrich PipelineError with server and tool context in performCall", async () => {
+      // First mock: health check for ensureServerHealthy.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          name: "time",
+          status: "ok",
+          latency: "2ms",
+          lastChecked: "2025-10-07T15:00:00Z",
+          lastSuccessful: "2025-10-07T15:00:00Z",
+        }),
+      });
+
+      // Second mock: tools list for getTools (to verify tool exists).
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: "get_current_time",
+              description: "Get current time",
+              inputSchema: {
+                type: "object",
+                properties: { timezone: { type: "string" } },
+              },
+            },
+          ],
+        }),
+      });
+
+      // Third mock: tool call returns pipeline error.
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({
+          "Mcpd-Error-Type": "response-pipeline-failure",
+        }),
+        text: async () => "Response processing failed\n",
+      });
+
+      const error = await client.servers.time!.tools.get_current_time!({
+        timezone: "UTC",
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PipelineError);
+      const pipelineError = error as PipelineError;
+      expect(pipelineError.pipelineFlow).toBe("response");
+      expect(pipelineError.serverName).toBe("time");
+      expect(pipelineError.operation).toBe("time.get_current_time");
+      expect(pipelineError.message).toContain("Response processing failed");
+    });
+
+    it("should not throw PipelineError for other 500 errors", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers({
+          "Mcpd-Error-Type": "some-other-error-type",
+        }),
+        text: async () => "Some other error",
+      });
+
+      const error = await client.listServers().catch((e: unknown) => e);
+
+      expect(error).not.toBeInstanceOf(PipelineError);
+      expect(error).toBeInstanceOf(McpdError);
     });
   });
 });

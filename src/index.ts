@@ -22,12 +22,16 @@ export {
   McpdError,
   AuthenticationError,
   ConnectionError,
+  PipelineError,
+  PIPELINE_FLOW_REQUEST,
+  PIPELINE_FLOW_RESPONSE,
   ServerNotFoundError,
   ServerUnhealthyError,
   TimeoutError,
   ToolExecutionError,
   ToolNotFoundError,
   ValidationError,
+  type PipelineFlow,
 } from "./errors";
 
 // Export type definitions
