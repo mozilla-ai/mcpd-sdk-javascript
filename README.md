@@ -233,6 +233,18 @@ Returns tool schemas for a specific server.
 // Get tools for a specific server
 const timeTools = await client.servers.time.getTools();
 // Returns: [{ name: 'get_current_time', description: '...', inputSchema: {...} }]
+
+// Iterate over tools
+for (const tool of timeTools) {
+  console.log(`${tool.name}: ${tool.description}`);
+}
+
+// Works with dynamic server names
+const servers = await client.listServers();
+for (const serverName of servers) {
+  const tools = await client.servers[serverName].getTools();
+  console.log(`${serverName}: ${tools.length} tools`);
+}
 ```
 
 #### `client.servers.<server>.tools.<tool>(args)`
@@ -248,25 +260,6 @@ const result = await client.servers.weather.tools.get_forecast({
 
 // Call without parameters
 const time = await client.servers.time.tools.get_current_time();
-```
-
-#### `client.servers.<server>.getTools()`
-
-Get all tools available on a specific server.
-
-```typescript
-// List tools for a server using property access
-const tools = await client.servers.time.getTools();
-for (const tool of tools) {
-  console.log(`${tool.name}: ${tool.description}`);
-}
-
-// Useful in loops with dynamic server names
-const servers = await client.listServers();
-for (const serverName of servers) {
-  const tools = await client.servers[serverName].getTools();
-  console.log(`${serverName}: ${tools.length} tools`);
-}
 ```
 
 #### `client.servers.<server>.callTool(toolName, args?)`
