@@ -4,7 +4,7 @@
 
 We at [Mozilla AI](https://www.mozilla.ai/) take the security of our projects seriously. We appreciate your efforts to responsibly disclose security vulnerabilities.
 
-This document outlines the process for reporting vulnerabilities in `mcpd-sdk-python`.
+This document outlines the process for reporting vulnerabilities in `mcpd-sdk-javascript`.
 
 ### Supported Versions
 
@@ -12,11 +12,10 @@ The following versions are currently supported for security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.0.x   | :white_check_mark: |
+| 0.1.x   | :white_check_mark: |
+| 0.0.x   | :x:                |
 
 **Please ensure you are using a supported version when reporting a vulnerability.**
-
-## Reporting a Vulnerability
 
 **Please DO NOT open a public GitHub issue.**
 
@@ -24,7 +23,7 @@ To report a security vulnerability, please send a detailed email to: [security@m
 
 Please include the following information in your report:
 
-1.  **Project Name and Version:** Specify which project (`mozilla-ai/mcpd-sdk-python`) and which version(s) are affected.
+1.  **Project Name and Version:** Specify which project (`mozilla-ai/mcpd-sdk-javascript`) and which version(s) are affected.
 2.  **Vulnerability Description:** A clear and concise description of the vulnerability.
 3.  **Steps to Reproduce:** Detailed steps to reproduce the vulnerability, including any necessary code, configuration, or environment details.
 4.  **Impact:** Describe the potential impact of the vulnerability (e.g., data breach, denial of service, privilege escalation).
@@ -47,6 +46,6 @@ Our typical disclosure timeline for critical issues is up to 30 days from the in
 
 ### Scope
 
-This security policy applies to all components of [mcpd](https://github.com/mozilla-ai/mcpd) (for example, this repository: [mcpd-sdk-python](https://github.com/mozilla-ai/mcpd-sdk-python)).
+This security policy applies to all components of [mcpd](https://github.com/mozilla-ai/mcpd) (for example, this repository: [mcpd-sdk-javascript](https://github.com/mozilla-ai/mcpd-sdk-javascript)).
 
 Thank you for helping us keep our projects secure for everyone.
