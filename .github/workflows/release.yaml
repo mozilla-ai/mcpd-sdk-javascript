@@ -40,8 +40,8 @@ jobs:
 
       - name: Activate npm from packageManager field
         run: |
-          corepack enable
-          corepack prepare npm@11.6.2 --activate
+          corepack enable npm
+          corepack install
           npm --version
 
       - name: Install dependencies
