@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.69",
+    "@ai-sdk/openai": "^4.0.27",
     "@mozilla-ai/mcpd": "file:../..",
-    "ai": "^5.0.97"
+    "ai": "^7.0.48"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",

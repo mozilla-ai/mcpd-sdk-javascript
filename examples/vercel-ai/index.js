@@ -9,7 +9,7 @@
  */
 
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateText, isStepCount } from 'ai';
 import { McpdClient, McpdError } from '@mozilla-ai/mcpd';
 
 /**
@@ -67,7 +67,7 @@ async function main() {
       model: openai('gpt-4o-mini'),
       prompt: query,
       tools: tools,
-      maxToolRoundtrips: 5,
+      stopWhen: isStepCount(5),
     });
 
     console.log('📋 AI Response:');
