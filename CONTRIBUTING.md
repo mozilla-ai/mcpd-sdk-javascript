@@ -148,6 +148,18 @@ npm run format:check
 npm run typecheck
 ```
 
+## Releasing
+
+Releases are **tag-driven** — the published version comes from the git tag, not from `package.json`.
+The `version` field in `package.json` is a `0.0.0` placeholder that CI overwrites at publish time, so **do not bump it manually** in a PR.
+
+To cut a release:
+
+1. Create a [GitHub Release](https://github.com/mozilla-ai/mcpd-sdk-javascript/releases/new) with a semver tag of the form `vX.Y.Z` (e.g. `v0.2.0`).
+2. Publishing the release triggers the [publish workflow](.github/workflows/release.yaml), which derives the version from the tag, builds, and publishes to npm.
+
+The tag is the single source of truth for the version; a tag that is not valid semver fails the publish workflow rather than shipping a bad version.
+
 ## Security Vulnerabilities
 
 If you discover a security vulnerability, please **DO NOT** open a public issue. Report it responsibly by following our [Security Policy](SECURITY.md).
