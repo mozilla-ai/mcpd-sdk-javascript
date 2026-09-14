@@ -67,7 +67,8 @@ By contributing to this project, you agree to abide by our [Code of Conduct](COD
 
 - Node.js 22+ and the exact npm version pinned in `package.json` under `engines.npm`
   - Other npm versions write `package-lock.json` differently, so `npm install` refuses to run with them
-  - Get the pinned version with `corepack enable npm` (reads `packageManager`) or `npm install -g npm@<version>`
+  - Get the pinned version with `npm install -g npm@<version>`
+  - On Node.js 22 to 24, `corepack enable npm` also works and reads the version from `packageManager`; Node.js 25+ no longer ships Corepack
 - Run `npm install` to install dependencies
 
 ### **Submit Pull Requests** 💻

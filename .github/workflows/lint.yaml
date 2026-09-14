@@ -20,7 +20,13 @@ jobs:
           node-version: '22.x'
 
       - name: Install pinned npm
-        run: npm install -g "npm@$(node -p "require('./package.json').engines.npm")"
+        run: |
+          version="$(node -p "require('./package.json').engines.npm")"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: engines.npm must be an exact version, got '$version'"
+            exit 1
+          fi
+          npm install -g "npm@$version"
 
       - name: Check package-lock.json is up to date
         run: |
