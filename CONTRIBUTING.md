@@ -65,7 +65,9 @@ By contributing to this project, you agree to abide by our [Code of Conduct](COD
 
 ### Requirements
 
-- Node.js 22+ and npm
+- Node.js 22+ and the exact npm version pinned in `package.json` under `engines.npm`
+  - Other npm versions write `package-lock.json` differently, so `npm install` refuses to run with them
+  - Get the pinned version with `corepack enable npm` (reads `packageManager`) or `npm install -g npm@<version>`
 - Run `npm install` to install dependencies
 
 ### **Submit Pull Requests** 💻
