@@ -55,6 +55,12 @@ jobs:
           echo "Setting package version to $VERSION (from tag $TAG)"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
+      # engines.npm pins the npm that contributors use to write package-lock.json.
+      # It is not a requirement for consumers, so drop it from the published manifest
+      # or every install with another npm would print an EBADENGINE warning.
+      - name: Remove contributor-only npm pin from published manifest
+        run: npm pkg delete engines.npm
+
       - name: Build package
         run: npm run build
 
