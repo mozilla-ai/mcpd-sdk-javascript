@@ -75,7 +75,7 @@
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.46.0",
     "vite": ">=7.2.2 ",
-    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-dts": "^5.1.2",
     "vitest": "^4.0.10"
   },
   "packageManager": "npm@11.19.1"
