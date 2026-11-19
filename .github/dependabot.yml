@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Each example holds its own lock file and drifts on its own, so all of them
+  # are scanned. Globbing requires the `directories` key, as `directory` does
+  # not support it.
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /examples/*
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      github-actions:
+        patterns:
+          - "*"
